@@ -224,6 +224,326 @@
             color: #fff;
         }
 
+        /* Module Overlay System */
+        .module-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 9000;
+            align-items: center;
+            justify-content: center;
+        }
+        .module-overlay.visible {
+            display: flex;
+        }
+        .module-container {
+            background: #0d0d1a;
+            border: 1px solid #4fc3f7;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 700px;
+            width: 95%;
+            text-align: center;
+        }
+
+        /* Welcome Module */
+        .welcome-module h2 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+        .welcome-module p {
+            color: #aaa;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .user-type-options {
+            display: flex;
+            flex-direction: row;
+            gap: 15px;
+            justify-content: center;
+        }
+        .type-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 15px;
+            background: #1a1a2e;
+            border: 2px solid #333;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex: 1;
+            min-width: 140px;
+            max-width: 200px;
+        }
+        .type-btn:hover {
+            border-color: #4fc3f7;
+            background: #252542;
+        }
+        .type-btn:active {
+            transform: scale(0.98);
+        }
+        .type-btn .icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .type-btn .label {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.3;
+        }
+        .type-btn .desc {
+            color: #888;
+            font-size: 11px;
+            margin-top: 8px;
+            text-align: center;
+            line-height: 1.4;
+        }
+        .type-btn.loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        .type-btn.loading .label::after {
+            content: '...';
+            animation: loading-dots 1s infinite;
+        }
+        @keyframes loading-dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        /* Upload Module */
+        .upload-module h2 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+        .upload-module p {
+            color: #aaa;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+        .upload-drop-zone {
+            border: 2px dashed #444;
+            border-radius: 12px;
+            padding: 40px 30px;
+            text-align: center;
+            transition: all 0.2s;
+            background: #1a1a2e;
+            margin-bottom: 20px;
+        }
+        .upload-drop-zone.dragover {
+            border-color: #4fc3f7;
+            background: #252542;
+        }
+        .upload-drop-zone .drop-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .upload-drop-zone .drop-text {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .upload-drop-zone .drop-or {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+        .upload-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 5px;
+            background: #4fc3f7;
+            color: #000;
+            font-weight: 600;
+        }
+        .upload-btn:hover {
+            background: #7fd4fb;
+        }
+        .upload-btn.secondary {
+            background: #2d2d44;
+            color: #fff;
+        }
+        .upload-btn.secondary:hover {
+            background: #3d3d54;
+        }
+        .upload-hint {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+        .skip-btn {
+            background: transparent;
+            border: 1px solid #444;
+            color: #888;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .skip-btn:hover {
+            border-color: #666;
+            color: #aaa;
+        }
+
+        /* Selected Folders Table */
+        .selected-folders {
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .selected-folders table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .selected-folders th {
+            text-align: left;
+            padding: 8px;
+            background: #1a1a2e;
+            color: #888;
+            font-weight: normal;
+            border-bottom: 1px solid #333;
+        }
+        .selected-folders td {
+            padding: 8px;
+            border-bottom: 1px solid #2d2d44;
+            color: #ccc;
+        }
+        .selected-folders .folder-path {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .selected-folders .file-count {
+            text-align: center;
+            color: #4fc3f7;
+        }
+        .selected-folders .remove-btn {
+            background: transparent;
+            border: none;
+            color: #ff6b6b;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 8px;
+        }
+        .selected-folders .remove-btn:hover {
+            color: #ff8787;
+        }
+        .selected-folders-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 8px;
+            background: #1a1a2e;
+            border-radius: 0 0 8px 8px;
+            margin-top: -1px;
+        }
+        .selected-folders-total .total-label {
+            color: #888;
+            font-size: 12px;
+        }
+        .selected-folders-total .total-count {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+
+        /* Upload Progress UI */
+        .upload-progress {
+            text-align: center;
+            padding: 20px;
+        }
+        .upload-progress .progress-text {
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .upload-progress .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #2d2d44;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        .upload-progress .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4fc3f7, #7fd4fb);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .upload-progress .progress-status {
+            color: #888;
+            font-size: 13px;
+        }
+        .upload-error {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid #ff6b6b;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        .upload-error .error-message {
+            color: #ff6b6b;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .upload-error .retry-btn {
+            padding: 8px 16px;
+            background: #ff6b6b;
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .upload-error .retry-btn:hover {
+            background: #ff8787;
+        }
+        .upload-success {
+            background: rgba(79, 195, 247, 0.1);
+            border: 1px solid #4fc3f7;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        .upload-success .success-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        .upload-success .success-message {
+            color: #4fc3f7;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .upload-success .continue-btn {
+            padding: 10px 20px;
+            background: #4fc3f7;
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .upload-success .continue-btn:hover {
+            background: #7fd4fb;
+        }
+
         /* Main Content Area */
         #main-content {
             width: 100%;
@@ -847,6 +1167,13 @@
         </div>
     </div>
 
+    <!-- Module Overlay System -->
+    <div class="module-overlay" id="module-overlay">
+        <div class="module-container" id="module-container">
+            <!-- Module content is dynamically inserted here -->
+        </div>
+    </div>
+
     <!-- Main Content Area -->
     <div id="main-content">
 
@@ -1112,6 +1439,523 @@
         console.log('OpenRadiomics Viewer - Three.js:', THREE.REVISION);
 
         // ========================================
+        // MODULE SYSTEM
+        // ========================================
+
+        const ModuleSystem = {
+            overlay: null,
+            container: null,
+            activeModule: null,
+
+            init() {
+                this.overlay = document.getElementById('module-overlay');
+                this.container = document.getElementById('module-container');
+            },
+
+            show(content, options = {}) {
+                if (!this.overlay || !this.container) {
+                    this.init();
+                }
+                this.container.innerHTML = content;
+                this.overlay.classList.add('visible');
+                this.activeModule = options.name || 'unknown';
+                console.log('ModuleSystem: Showing module:', this.activeModule);
+            },
+
+            close() {
+                if (this.overlay) {
+                    this.overlay.classList.remove('visible');
+                }
+                if (this.container) {
+                    this.container.innerHTML = '';
+                }
+                this.activeModule = null;
+                console.log('ModuleSystem: Closed');
+            },
+
+            isActive() {
+                return this.activeModule !== null;
+            }
+        };
+
+        // ========================================
+        // WELCOME MODULE
+        // ========================================
+
+        const WelcomeModule = {
+            userProfile: null,
+
+            async shouldShow() {
+                try {
+                    const response = await fetch('/api/user/profile');
+                    if (!response.ok) {
+                        console.log('WelcomeModule: Could not fetch profile');
+                        return false;
+                    }
+                    this.userProfile = await response.json();
+                    // Show if user_type is null (not yet selected)
+                    return this.userProfile.user_type === null;
+                } catch (error) {
+                    console.error('WelcomeModule: Error checking profile:', error);
+                    return false;
+                }
+            },
+
+            show() {
+                const html = `
+                    <div class="welcome-module">
+                        <h2>Welcome to OpenRadiomics</h2>
+                        <p>To personalize your experience, please tell us about yourself:</p>
+                        <div class="user-type-options">
+                            <button class="type-btn" data-type="patient">
+                                <span class="icon">&#128100;</span>
+                                <span class="label">Patient</span>
+                                <span class="desc">View and manage my medical imaging</span>
+                            </button>
+                            <button class="type-btn" data-type="provider">
+                                <span class="icon">&#129489;&#8205;&#9877;&#65039;</span>
+                                <span class="label">Individual Healthcare Provider</span>
+                                <span class="desc">Manage patient imaging studies</span>
+                            </button>
+                            <button class="type-btn" data-type="organization">
+                                <span class="icon">&#127973;</span>
+                                <span class="label">Healthcare Organization</span>
+                                <span class="desc">Hospital system with multiple providers</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                ModuleSystem.show(html, { name: 'welcome' });
+                this.attachListeners();
+            },
+
+            attachListeners() {
+                document.querySelectorAll('.type-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const type = e.currentTarget.dataset.type;
+                        this.selectType(type, e.currentTarget);
+                    });
+                });
+            },
+
+            async selectType(type, buttonEl) {
+                // Show loading state
+                if (buttonEl) {
+                    buttonEl.classList.add('loading');
+                }
+                document.querySelectorAll('.type-btn').forEach(btn => {
+                    btn.disabled = true;
+                });
+
+                try {
+                    const response = await fetch('/api/user/type', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_type: type })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to save');
+                    }
+
+                    const result = await response.json();
+                    console.log('WelcomeModule: User type set to', result.user_type);
+
+                    // Close the module
+                    ModuleSystem.close();
+
+                    // Check if upload module should show (user has no data)
+                    if (await UploadModule.shouldShow()) {
+                        UploadModule.show();
+                    }
+
+                } catch (error) {
+                    console.error('WelcomeModule: Error saving type:', error);
+                    // Re-enable buttons on error
+                    if (buttonEl) {
+                        buttonEl.classList.remove('loading');
+                    }
+                    document.querySelectorAll('.type-btn').forEach(btn => {
+                        btn.disabled = false;
+                    });
+                    alert('Failed to save. Please try again.');
+                }
+            }
+        };
+
+        // ========================================
+        // UPLOAD MODULE
+        // ========================================
+
+        const UploadModule = {
+            // Track folders separately: [{name, path, files: []}]
+            selectedFolders: [],
+
+            async shouldShow() {
+                // Show if user has no accessible data
+                try {
+                    const response = await fetch('/api/user/has-data');
+                    if (!response.ok) return false;
+                    const data = await response.json();
+                    return !data.has_data;
+                } catch (error) {
+                    console.error('UploadModule: Error checking data:', error);
+                    return false;
+                }
+            },
+
+            show() {
+                this.selectedFolders = []; // Reset
+                const html = `
+                    <div class="upload-module">
+                        <h2>Let's Get Started</h2>
+                        <p>Upload your DICOM images to begin viewing and analyzing your medical imaging data.</p>
+
+                        <div class="upload-drop-zone" id="upload-drop-zone">
+                            <div class="drop-icon">&#128193;</div>
+                            <div class="drop-text">Drag & drop DICOM files or folders here</div>
+                            <div class="drop-or">or</div>
+                            <button class="upload-btn" id="select-files-btn">Select Files</button>
+                            <button class="upload-btn secondary" id="select-folder-btn">Add Folder</button>
+                            <input type="file" id="file-input" multiple accept=".dcm,.dicom,application/dicom" style="display:none">
+                            <input type="file" id="folder-input" webkitdirectory style="display:none">
+                        </div>
+
+                        <div id="selected-folders-container" style="display:none;">
+                            <div class="selected-folders" id="selected-folders-table"></div>
+                            <div class="selected-folders-total">
+                                <span class="total-label">Total: <span class="total-count" id="total-files">0</span> files</span>
+                                <div>
+                                    <button class="upload-btn secondary" id="add-more-btn">Add More</button>
+                                    <button class="upload-btn" id="upload-now-btn" style="margin-left: 8px;">Upload Now</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="default-hint" class="upload-hint">
+                            Supported: DICOM files (.dcm) or folders containing DICOM images
+                        </div>
+
+                        <button class="skip-btn" id="skip-upload-btn">Skip for now</button>
+                    </div>
+                `;
+                ModuleSystem.show(html, { name: 'upload' });
+                this.attachListeners();
+            },
+
+            attachListeners() {
+                const dropZone = document.getElementById('upload-drop-zone');
+                const fileInput = document.getElementById('file-input');
+                const folderInput = document.getElementById('folder-input');
+                const selectFilesBtn = document.getElementById('select-files-btn');
+                const selectFolderBtn = document.getElementById('select-folder-btn');
+                const skipBtn = document.getElementById('skip-upload-btn');
+
+                // Drag and drop
+                dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('dragover');
+                });
+                dropZone.addEventListener('dragleave', () => {
+                    dropZone.classList.remove('dragover');
+                });
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('dragover');
+                    this.addFiles(e.dataTransfer.files, 'Dropped files');
+                });
+
+                // File selection
+                selectFilesBtn.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', () => {
+                    this.addFiles(fileInput.files, 'Selected files');
+                    fileInput.value = '';
+                });
+
+                // Folder selection
+                selectFolderBtn.addEventListener('click', () => folderInput.click());
+                folderInput.addEventListener('change', () => {
+                    this.addFiles(folderInput.files, null); // Will extract folder name
+                    folderInput.value = '';
+                });
+
+                // Skip
+                skipBtn.addEventListener('click', () => ModuleSystem.close());
+            },
+
+            addFiles(files, sourceName) {
+                if (!files || files.length === 0) return;
+
+                const fileArray = Array.from(files);
+
+                // Try to get the full relative path from the first file
+                // webkitRelativePath gives us "FolderName/subfolder/file.dcm"
+                let folderPath = sourceName || 'Selected files';
+                if (fileArray.length > 0 && fileArray[0].webkitRelativePath) {
+                    // Get the full path up to the root folder selected
+                    const fullPath = fileArray[0].webkitRelativePath;
+                    const parts = fullPath.split('/');
+                    // Show the root folder name (browser security prevents showing absolute path)
+                    // But we can reconstruct a meaningful path from the relative paths
+                    if (parts.length > 1) {
+                        // Find the deepest common folder by checking all files
+                        const rootFolder = parts[0];
+                        // Check if there are subfolders
+                        const hasSubfolders = fileArray.some(f => {
+                            const p = f.webkitRelativePath.split('/');
+                            return p.length > 2;
+                        });
+                        if (hasSubfolders) {
+                            folderPath = rootFolder + '/...';
+                        } else {
+                            folderPath = rootFolder;
+                        }
+                    }
+                }
+
+                // Add as a new folder entry
+                this.selectedFolders.push({
+                    id: Date.now(),
+                    name: folderPath,
+                    path: folderPath, // Store path separately for display
+                    files: fileArray
+                });
+
+                this.updateFoldersUI();
+            },
+
+            removeFolder(folderId) {
+                this.selectedFolders = this.selectedFolders.filter(f => f.id !== folderId);
+                this.updateFoldersUI();
+            },
+
+            getAllFiles() {
+                return this.selectedFolders.flatMap(f => f.files);
+            },
+
+            updateFoldersUI() {
+                const container = document.getElementById('selected-folders-container');
+                const tableDiv = document.getElementById('selected-folders-table');
+                const defaultHint = document.getElementById('default-hint');
+                const totalEl = document.getElementById('total-files');
+
+                if (this.selectedFolders.length === 0) {
+                    container.style.display = 'none';
+                    defaultHint.style.display = 'block';
+                    return;
+                }
+
+                container.style.display = 'block';
+                defaultHint.style.display = 'none';
+
+                // Build table
+                let tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Path</th>
+                                <th style="text-align:center">Files</th>
+                                <th style="width:50px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                let totalFiles = 0;
+                for (const folder of this.selectedFolders) {
+                    totalFiles += folder.files.length;
+                    tableHtml += `
+                        <tr>
+                            <td class="folder-path" title="${folder.path || folder.name}">${folder.path || folder.name}</td>
+                            <td class="file-count">${folder.files.length}</td>
+                            <td><button class="remove-btn" data-folder-id="${folder.id}" title="Remove">&times;</button></td>
+                        </tr>
+                    `;
+                }
+
+                tableHtml += '</tbody></table>';
+                tableDiv.innerHTML = tableHtml;
+                totalEl.textContent = totalFiles;
+
+                // Attach remove handlers
+                tableDiv.querySelectorAll('.remove-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const folderId = parseInt(btn.dataset.folderId);
+                        this.removeFolder(folderId);
+                    });
+                });
+
+                // Attach upload/add more handlers
+                document.getElementById('upload-now-btn').onclick = () => this.handleFiles(this.getAllFiles());
+                document.getElementById('add-more-btn').onclick = () => document.getElementById('folder-input').click();
+            },
+
+            handleFiles(files) {
+                console.log('UploadModule: Files selected:', files.length);
+                if (!files || files.length === 0) return;
+
+                // Filter for DICOM files (check extension or accept all from folder)
+                const dicomFiles = Array.from(files).filter(f => {
+                    const name = f.name.toLowerCase();
+                    // Accept .dcm files, or files without extension (common for DICOM)
+                    return name.endsWith('.dcm') || name.endsWith('.dicom') || !name.includes('.');
+                });
+
+                if (dicomFiles.length === 0) {
+                    this.showError('No DICOM files found. Please select .dcm files or a folder containing DICOM images.');
+                    return;
+                }
+
+                this.uploadFiles(dicomFiles);
+            },
+
+            showProgress(total) {
+                const dropZone = document.getElementById('upload-drop-zone');
+                if (!dropZone) return;
+
+                dropZone.innerHTML = `
+                    <div class="upload-progress">
+                        <div class="progress-text">Uploading <span id="upload-count">0</span> of ${total} files...</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-status" id="progress-status">Preparing upload...</div>
+                    </div>
+                `;
+            },
+
+            updateProgress(current, total, status) {
+                const countEl = document.getElementById('upload-count');
+                const barEl = document.getElementById('progress-bar');
+                const statusEl = document.getElementById('progress-status');
+
+                if (countEl) countEl.textContent = current;
+                if (barEl) barEl.style.width = `${Math.round((current / total) * 100)}%`;
+                if (statusEl) statusEl.textContent = status;
+            },
+
+            showError(message, retryFiles = null) {
+                const dropZone = document.getElementById('upload-drop-zone');
+                if (!dropZone) return;
+
+                dropZone.innerHTML = `
+                    <div class="upload-error">
+                        <div class="error-message">${message}</div>
+                        ${retryFiles ? '<button class="retry-btn" id="retry-upload-btn">Try Again</button>' : ''}
+                    </div>
+                `;
+
+                if (retryFiles) {
+                    const retryBtn = document.getElementById('retry-upload-btn');
+                    if (retryBtn) {
+                        retryBtn.addEventListener('click', () => this.uploadFiles(retryFiles));
+                    }
+                }
+            },
+
+            showSuccess(uploadedCount, studyCount) {
+                const container = document.querySelector('.module-container');
+                if (!container) return;
+
+                container.innerHTML = `
+                    <div class="upload-success">
+                        <div class="success-icon">&#10003;</div>
+                        <div class="success-message">
+                            Successfully uploaded ${uploadedCount} file${uploadedCount !== 1 ? 's' : ''}
+                            across ${studyCount} stud${studyCount !== 1 ? 'ies' : 'y'}!
+                        </div>
+                        <button class="continue-btn" id="continue-btn">Continue to Viewer</button>
+                    </div>
+                `;
+
+                const continueBtn = document.getElementById('continue-btn');
+                if (continueBtn) {
+                    continueBtn.addEventListener('click', () => {
+                        ModuleSystem.close();
+                        // Optionally refresh studies list
+                        if (typeof loadStudies === 'function') {
+                            loadStudies();
+                        }
+                    });
+                }
+            },
+
+            async uploadFiles(files) {
+                const total = files.length;
+                this.showProgress(total);
+
+                const formData = new FormData();
+                files.forEach(file => formData.append('files', file));
+
+                try {
+                    // Use XMLHttpRequest for progress tracking
+                    const result = await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+
+                        xhr.upload.addEventListener('progress', (e) => {
+                            if (e.lengthComputable) {
+                                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                                // Estimate files based on progress
+                                const estimatedFiles = Math.round((percentComplete / 100) * total);
+                                this.updateProgress(estimatedFiles, total, `Uploading... ${percentComplete}%`);
+                            }
+                        });
+
+                        xhr.addEventListener('load', () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                try {
+                                    resolve(JSON.parse(xhr.responseText));
+                                } catch (e) {
+                                    reject(new Error('Invalid response from server'));
+                                }
+                            } else if (xhr.status === 401) {
+                                // Auth expired
+                                window.location.href = '/login';
+                            } else {
+                                try {
+                                    const err = JSON.parse(xhr.responseText);
+                                    reject(new Error(err.error || 'Upload failed'));
+                                } catch (e) {
+                                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                                }
+                            }
+                        });
+
+                        xhr.addEventListener('error', () => {
+                            reject(new Error('Network error during upload'));
+                        });
+
+                        xhr.open('POST', '/api/upload/dicom');
+                        xhr.send(formData);
+                    });
+
+                    console.log('UploadModule: Upload result:', result);
+
+                    if (result.success) {
+                        this.updateProgress(total, total, 'Complete!');
+
+                        // Show success after brief delay
+                        setTimeout(() => {
+                            this.showSuccess(result.uploaded, result.studies);
+                        }, 500);
+
+                        // Log any partial errors
+                        if (result.errors && result.errors.length > 0) {
+                            console.warn('UploadModule: Some files had errors:', result.errors);
+                        }
+                    } else {
+                        this.showError(result.error || 'Upload failed', files);
+                    }
+
+                } catch (error) {
+                    console.error('UploadModule: Upload error:', error);
+                    this.showError(error.message || 'Upload failed. Please try again.', files);
+                }
+            }
+        };
+
+        // ========================================
         // AUTHENTICATION MODULE
         // ========================================
 
@@ -1140,6 +1984,14 @@
                         this.startTokenRefresh();
                         this.startInactivityMonitor();
                         console.log('Auth: User authenticated:', this.user.email);
+
+                        // Check if welcome module should show (new user without type selected)
+                        if (await WelcomeModule.shouldShow()) {
+                            WelcomeModule.show();
+                        } else if (await UploadModule.shouldShow()) {
+                            // User has type but no data - show upload module
+                            UploadModule.show();
+                        }
                     } else if (response.status === 401) {
                         // Not authenticated - auth middleware will handle redirect
                         console.log('Auth: Not authenticated');

@@ -138,38 +138,6 @@
             font-size: 11px;
             margin-top: 4px;
         }
-        .contact-toggle {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        .toggle-btn {
-            flex: 1;
-            padding: 10px 15px;
-            background: #1a1a2e;
-            border: 1px solid #444;
-            border-radius: 8px;
-            color: #888;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: center;
-        }
-        .toggle-btn.active {
-            background: rgba(79, 195, 247, 0.1);
-            border-color: #4fc3f7;
-            color: #4fc3f7;
-        }
-        .toggle-btn:hover:not(.active) {
-            border-color: #666;
-            color: #aaa;
-        }
-        .contact-field {
-            display: none;
-        }
-        .contact-field.active {
-            display: block;
-        }
         .password-strength {
             margin-top: 8px;
         }
@@ -341,6 +309,136 @@
         .footer a:hover {
             color: #4fc3f7;
         }
+        /* Step 2: Verification styles */
+        .step-container {
+            display: none;
+        }
+        .step-container.active {
+            display: block;
+        }
+        .verification-email {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .verification-email .label {
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+        .verification-email .email {
+            color: #4fc3f7;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        .code-input-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .code-input {
+            width: 50px;
+            height: 60px;
+            font-size: 24px;
+            text-align: center;
+            background: #1a1a2e;
+            border: 2px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            transition: border-color 0.2s;
+        }
+        .code-input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        .code-input.filled {
+            border-color: #4fc3f7;
+        }
+        .verification-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .btn-secondary {
+            flex: 1;
+            padding: 14px 20px;
+            background: transparent;
+            color: #aaa;
+            border: 1px solid #444;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background: #1a1a2e;
+            border-color: #666;
+            color: #fff;
+        }
+        .btn-secondary:disabled {
+            color: #555;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            flex: 2;
+            padding: 14px 20px;
+            background: #4fc3f7;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #81d4fa;
+        }
+        .btn-primary:disabled {
+            background: #555;
+            color: #999;
+            cursor: not-allowed;
+        }
+        .resend-timer {
+            text-align: center;
+            margin-top: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+        .resend-timer button {
+            background: none;
+            border: none;
+            color: #4fc3f7;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: underline;
+        }
+        .resend-timer button:disabled {
+            color: #555;
+            cursor: not-allowed;
+            text-decoration: none;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+        .step-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #444;
+        }
+        .step-dot.active {
+            background: #4fc3f7;
+        }
+        .step-dot.completed {
+            background: #28a745;
+        }
         @media (max-width: 480px) {
             .form-row {
                 flex-direction: column;
@@ -351,6 +449,11 @@
             }
             .contact-toggle {
                 flex-direction: column;
+            }
+            .code-input {
+                width: 40px;
+                height: 50px;
+                font-size: 20px;
             }
         }
     </style>
@@ -363,22 +466,31 @@
         </div>
 
         <div class="register-card">
-            <h2>Create an account</h2>
-            <p class="subtitle">Join OpenRadiomics to access medical imaging studies</p>
-
-            {% if error %}
-            <div class="error-message">
-                {{ error }}
+            <!-- Step Indicator -->
+            <div class="step-indicator">
+                <div class="step-dot active" id="stepDot1"></div>
+                <div class="step-dot" id="stepDot2"></div>
+                <div class="step-dot" id="stepDot3"></div>
             </div>
-            {% endif %}
 
-            {% if success %}
-            <div class="success-message">
-                {{ success }}
-            </div>
-            {% endif %}
+            <!-- Step 1: Registration Form -->
+            <div class="step-container active" id="step1">
+                <h2>Create an account</h2>
+                <p class="subtitle">Join OpenRadiomics to access medical imaging studies</p>
 
-            <form id="registerForm" method="POST" action="{{ url_for('auth_register') }}" novalidate>
+                {% if error %}
+                <div class="error-message" id="step1Error">
+                    {{ error }}
+                </div>
+                {% endif %}
+
+                {% if success and not show_verification %}
+                <div class="success-message">
+                    {{ success }}
+                </div>
+                {% endif %}
+
+                <form id="registerForm" method="POST" action="{{ url_for('auth_register') }}" novalidate>
                 <!-- Personal Information -->
                 <div class="form-section">
                     <div class="form-section-title">Personal Information</div>
@@ -401,145 +513,28 @@
 
                 <!-- Contact Information -->
                 <div class="form-section">
-                    <div class="form-section-title">Contact Information</div>
-
-                    <div class="contact-toggle">
-                        <button type="button" class="toggle-btn active" data-contact="email" id="toggleEmail">
-                            Use Email
-                        </button>
-                        <button type="button" class="toggle-btn" data-contact="phone" id="togglePhone">
-                            Use Phone
-                        </button>
-                    </div>
-
-                    <div class="contact-field active" id="emailField">
-                        <div class="form-group">
-                            <label for="email">Email Address <span class="required">*</span></label>
-                            <input type="email" id="email" name="email"
-                                   placeholder="you@example.com" value="{{ form_data.email if form_data else '' }}">
-                            <div class="field-hint">Used for verification and account recovery</div>
-                            <div class="field-error" id="email_error"></div>
-                        </div>
-                    </div>
-
-                    <div class="contact-field" id="phoneField">
-                        <div class="form-group">
-                            <label for="phone">Phone Number <span class="required">*</span></label>
-                            <input type="tel" id="phone" name="phone"
-                                   placeholder="+1 (555) 123-4567" value="{{ form_data.phone if form_data else '' }}">
-                            <div class="field-hint">Used for SMS verification and MFA</div>
-                            <div class="field-error" id="phone_error"></div>
-                        </div>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email"
+                               placeholder="you@example.com" value="{{ form_data.email if form_data else '' }}">
+                        <div class="field-hint">Used for verification and account recovery</div>
+                        <div class="field-error" id="email_error"></div>
                     </div>
 
                     <!-- Hidden field to track which contact method is primary -->
                     <input type="hidden" id="primary_contact" name="primary_contact" value="email">
 
-                    <!-- Optional secondary contact -->
-                    <div class="form-group" id="secondaryEmailGroup" style="display: none; margin-top: 15px;">
-                        <label for="secondary_email">Email Address (optional)</label>
-                        <input type="email" id="secondary_email" name="secondary_email"
-                               placeholder="you@example.com">
-                        <div class="field-hint">Optional backup contact</div>
-                    </div>
-
-                    <div class="form-group" id="secondaryPhoneGroup" style="margin-top: 15px;">
-                        <label for="secondary_phone">Phone Number (optional)</label>
-                        <input type="tel" id="secondary_phone" name="secondary_phone"
-                               placeholder="+1 (555) 123-4567">
+                    <!-- Optional phone -->
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" name="phone"
+                               placeholder="+1 (555) 123-4567" value="{{ form_data.phone if form_data else '' }}">
                         <div class="field-hint">Optional for SMS notifications</div>
-                    </div>
-                </div>
-
-                <!-- Password -->
-                <div class="form-section">
-                    <div class="form-section-title">Password</div>
-
-                    <div class="form-row single">
-                        <div class="form-group">
-                            <label for="password">Password <span class="required">*</span></label>
-                            <input type="password" id="password" name="password" required
-                                   placeholder="Create a strong password">
-                            <div class="password-strength">
-                                <div class="strength-bar">
-                                    <div class="strength-fill" id="strengthFill"></div>
-                                </div>
-                                <div class="strength-text" id="strengthText"></div>
-                            </div>
-                            <ul class="password-requirements" id="passwordRequirements">
-                                <li id="req-length">At least 12 characters</li>
-                                <li id="req-upper">One uppercase letter</li>
-                                <li id="req-lower">One lowercase letter</li>
-                                <li id="req-number">One number</li>
-                                <li id="req-symbol">One special character (!@#$%^&*)</li>
-                            </ul>
-                            <div class="field-error" id="password_error"></div>
-                        </div>
+                        <div class="field-error" id="phone_error"></div>
                     </div>
 
-                    <div class="form-row single">
-                        <div class="form-group">
-                            <label for="confirm_password">Confirm Password <span class="required">*</span></label>
-                            <input type="password" id="confirm_password" name="confirm_password" required
-                                   placeholder="Re-enter your password">
-                            <div class="field-error" id="confirm_password_error"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Address -->
-                <div class="form-section">
-                    <div class="form-section-title">Address</div>
-
-                    <div class="form-row single">
-                        <div class="form-group">
-                            <label for="street_address">Street Address <span class="required">*</span></label>
-                            <input type="text" id="street_address" name="street_address" required
-                                   placeholder="123 Main Street" value="{{ form_data.street_address if form_data else '' }}">
-                            <div class="field-error" id="street_address_error"></div>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="city">City <span class="required">*</span></label>
-                            <input type="text" id="city" name="city" required
-                                   placeholder="City" value="{{ form_data.city if form_data else '' }}">
-                            <div class="field-error" id="city_error"></div>
-                        </div>
-                        <div class="form-group">
-                            <label for="state">State/Province <span class="required">*</span></label>
-                            <input type="text" id="state" name="state" required
-                                   placeholder="State" value="{{ form_data.state if form_data else '' }}">
-                            <div class="field-error" id="state_error"></div>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="postal_code">ZIP/Postal Code <span class="required">*</span></label>
-                            <input type="text" id="postal_code" name="postal_code" required
-                                   placeholder="12345" value="{{ form_data.postal_code if form_data else '' }}">
-                            <div class="field-error" id="postal_code_error"></div>
-                        </div>
-                        <div class="form-group">
-                            <label for="country">Country <span class="required">*</span></label>
-                            <select id="country" name="country" required>
-                                <option value="">Select a country</option>
-                                <option value="US" {% if form_data and form_data.country == 'US' %}selected{% endif %}>United States</option>
-                                <option value="CA" {% if form_data and form_data.country == 'CA' %}selected{% endif %}>Canada</option>
-                                <option value="GB" {% if form_data and form_data.country == 'GB' %}selected{% endif %}>United Kingdom</option>
-                                <option value="DE" {% if form_data and form_data.country == 'DE' %}selected{% endif %}>Germany</option>
-                                <option value="FR" {% if form_data and form_data.country == 'FR' %}selected{% endif %}>France</option>
-                                <option value="AU" {% if form_data and form_data.country == 'AU' %}selected{% endif %}>Australia</option>
-                                <option value="JP" {% if form_data and form_data.country == 'JP' %}selected{% endif %}>Japan</option>
-                                <option value="IN" {% if form_data and form_data.country == 'IN' %}selected{% endif %}>India</option>
-                                <option value="BR" {% if form_data and form_data.country == 'BR' %}selected{% endif %}>Brazil</option>
-                                <option value="MX" {% if form_data and form_data.country == 'MX' %}selected{% endif %}>Mexico</option>
-                                <option value="OTHER" {% if form_data and form_data.country == 'OTHER' %}selected{% endif %}>Other</option>
-                            </select>
-                            <div class="field-error" id="country_error"></div>
-                        </div>
+                    <div class="field-hint" style="margin-top: 10px; color: #888; font-size: 12px;">
+                        <strong>Note:</strong> Email or phone number is required for verification
                     </div>
                 </div>
 
@@ -564,35 +559,157 @@
                     </div>
                 </div>
 
-                <button type="submit" class="register-btn" id="submitBtn">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                    </svg>
-                    Create Account
-                </button>
-            </form>
+                    <button type="submit" class="register-btn" id="submitBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+                        </svg>
+                        Continue
+                    </button>
+                </form>
 
-            <div class="divider">
-                <span>or</span>
-            </div>
+                <div class="divider">
+                    <span>or</span>
+                </div>
 
-            <div class="login-link">
-                <a href="{{ url_for('login') }}">Already have an account? Sign in</a>
-            </div>
+                <div class="login-link">
+                    <a href="{{ url_for('login') }}">Already have an account? Sign in</a>
+                </div>
 
-            <div class="hipaa-notice">
-                <h3>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-                    </svg>
-                    HIPAA Compliant Registration
-                </h3>
-                <p>
-                    After registration, you will receive a verification email or SMS.
-                    You must complete verification and set up multi-factor authentication (MFA)
-                    before accessing the system. An authenticator app (Google Authenticator, Authy, etc.) is required.
-                </p>
+                <div class="hipaa-notice">
+                    <h3>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                        </svg>
+                        HIPAA Compliant Registration
+                    </h3>
+                    <p>
+                        After registration, you will receive a verification email.
+                        You must complete verification and set up multi-factor authentication (MFA)
+                        before accessing the system. An authenticator app (Google Authenticator, Authy, etc.) is required.
+                    </p>
+                </div>
             </div>
+            <!-- End Step 1 -->
+
+            <!-- Step 2: Verification -->
+            <div class="step-container" id="step2">
+                <h2>Verify your email</h2>
+                <p class="subtitle">Enter the 6-digit code sent to your email</p>
+
+                <div class="error-message" id="step2Error" style="display: none;"></div>
+                <div class="success-message" id="step2Success" style="display: none;"></div>
+
+                <div class="verification-email">
+                    <div class="label">Verification code sent to</div>
+                    <div class="email" id="maskedEmail">{{ masked_email if masked_email else '***@***.com' }}</div>
+                </div>
+
+                <form id="verifyForm" method="POST" action="{{ url_for('auth_verify') }}" novalidate>
+                    <div class="code-input-container">
+                        <input type="text" class="code-input" maxlength="1" data-index="0" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+                        <input type="text" class="code-input" maxlength="1" data-index="1" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="code-input" maxlength="1" data-index="2" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="code-input" maxlength="1" data-index="3" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="code-input" maxlength="1" data-index="4" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="code-input" maxlength="1" data-index="5" inputmode="numeric" pattern="[0-9]">
+                    </div>
+                    <input type="hidden" name="code" id="verificationCode">
+
+                    <div class="verification-actions">
+                        <button type="button" class="btn-secondary" id="backBtn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 5px;">
+                                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                            </svg>
+                            Back
+                        </button>
+                        <button type="submit" class="btn-primary" id="verifyBtn">
+                            Verify Email
+                        </button>
+                    </div>
+                </form>
+
+                <div class="resend-timer">
+                    <span id="resendText">Didn't receive the code?</span>
+                    <button type="button" id="resendBtn" disabled>
+                        Resend code (<span id="countdown">30</span>s)
+                    </button>
+                </div>
+
+                <div class="hipaa-notice" style="margin-top: 25px;">
+                    <h3>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                        Check your inbox
+                    </h3>
+                    <p>
+                        The verification code was sent to your email address.
+                        If you don't see it, check your spam folder. The code expires in 24 hours.
+                    </p>
+                </div>
+            </div>
+            <!-- End Step 2 -->
+
+            <!-- Step 3: Set Password -->
+            <div class="step-container" id="step3">
+                <h2>Set your password</h2>
+                <p class="subtitle">Create a secure password for your account</p>
+
+                <div class="error-message" id="step3Error" style="display: none;"></div>
+                <div class="success-message" id="step3Success" style="display: none;"></div>
+
+                <form id="passwordForm" novalidate>
+                    <div class="form-section">
+                        <div class="form-group">
+                            <label for="password">Password <span class="required">*</span></label>
+                            <input type="password" id="password" name="password" required
+                                   placeholder="Create a strong password">
+                            <div class="password-strength">
+                                <div class="strength-bar">
+                                    <div class="strength-fill" id="strengthFill"></div>
+                                </div>
+                                <div class="strength-text" id="strengthText"></div>
+                            </div>
+                            <ul class="password-requirements" id="passwordRequirements">
+                                <li id="req-length">At least 12 characters</li>
+                                <li id="req-upper">One uppercase letter</li>
+                                <li id="req-lower">One lowercase letter</li>
+                                <li id="req-number">One number</li>
+                                <li id="req-symbol">One special character (!@#$%^&*)</li>
+                            </ul>
+                            <div class="field-error" id="password_error"></div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 15px;">
+                            <label for="confirm_password">Confirm Password <span class="required">*</span></label>
+                            <input type="password" id="confirm_password" name="confirm_password" required
+                                   placeholder="Re-enter your password">
+                            <div class="field-error" id="confirm_password_error"></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="register-btn" id="completeBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        Complete Registration
+                    </button>
+                </form>
+
+                <div class="hipaa-notice" style="margin-top: 25px;">
+                    <h3>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                        </svg>
+                        Secure Password
+                    </h3>
+                    <p>
+                        Your password must meet HIPAA-compliant security requirements.
+                        After completing registration, you will need to set up multi-factor authentication (MFA).
+                    </p>
+                </div>
+            </div>
+            <!-- End Step 3 -->
         </div>
 
         <div class="footer">
@@ -600,50 +717,709 @@
         </div>
     </div>
 
-    <script>
-        // Contact toggle functionality
-        const toggleEmail = document.getElementById('toggleEmail');
-        const togglePhone = document.getElementById('togglePhone');
-        const emailField = document.getElementById('emailField');
-        const phoneField = document.getElementById('phoneField');
-        const primaryContact = document.getElementById('primary_contact');
-        const secondaryEmailGroup = document.getElementById('secondaryEmailGroup');
-        const secondaryPhoneGroup = document.getElementById('secondaryPhoneGroup');
-        const emailInput = document.getElementById('email');
-        const phoneInput = document.getElementById('phone');
+    <!-- Existing User Modal -->
+    <div class="modal-overlay" id="existingUserModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Account Already Exists</h3>
+                <button type="button" class="modal-close" id="modalCloseBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage">An account with this email already exists.</p>
+            </div>
+            <div class="modal-actions" id="modalActions">
+                <!-- Buttons will be populated dynamically -->
+            </div>
+        </div>
+    </div>
 
-        function setContactMethod(method) {
-            if (method === 'email') {
-                toggleEmail.classList.add('active');
-                togglePhone.classList.remove('active');
-                emailField.classList.add('active');
-                phoneField.classList.remove('active');
-                primaryContact.value = 'email';
-                secondaryEmailGroup.style.display = 'none';
-                secondaryPhoneGroup.style.display = 'block';
-                emailInput.required = true;
-                phoneInput.required = false;
-            } else {
-                togglePhone.classList.add('active');
-                toggleEmail.classList.remove('active');
-                phoneField.classList.add('active');
-                emailField.classList.remove('active');
-                primaryContact.value = 'phone';
-                secondaryPhoneGroup.style.display = 'none';
-                secondaryEmailGroup.style.display = 'block';
-                phoneInput.required = true;
-                emailInput.required = false;
+    <style>
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #0d0d1a;
+            border-radius: 12px;
+            padding: 30px;
+            border: 1px solid #333;
+            max-width: 420px;
+            width: 90%;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-header h3 {
+            color: #4fc3f7;
+            font-size: 18px;
+            margin: 0;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .modal-close:hover {
+            color: #fff;
+        }
+        .modal-body {
+            margin-bottom: 25px;
+        }
+        .modal-body p {
+            color: #ccc;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .modal-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .modal-btn {
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            text-decoration: none;
+            display: block;
+        }
+        .modal-btn-primary {
+            background: #4fc3f7;
+            color: #000;
+            border: none;
+        }
+        .modal-btn-primary:hover {
+            background: #81d4fa;
+        }
+        .modal-btn-secondary {
+            background: transparent;
+            color: #4fc3f7;
+            border: 1px solid #4fc3f7;
+        }
+        .modal-btn-secondary:hover {
+            background: rgba(79, 195, 247, 0.1);
+        }
+        .modal-btn-text {
+            background: none;
+            border: none;
+            color: #888;
+        }
+        .modal-btn-text:hover {
+            color: #fff;
+        }
+    </style>
+
+    <script>
+        // ============================================
+        // STEP MANAGEMENT
+        // ============================================
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const step3 = document.getElementById('step3');
+        const stepDot1 = document.getElementById('stepDot1');
+        const stepDot2 = document.getElementById('stepDot2');
+        const stepDot3 = document.getElementById('stepDot3');
+
+        function showStep(stepNum) {
+            // Hide all steps
+            step1.classList.remove('active');
+            step2.classList.remove('active');
+            step3.classList.remove('active');
+
+            // Reset all dots
+            stepDot1.classList.remove('active', 'completed');
+            stepDot2.classList.remove('active', 'completed');
+            stepDot3.classList.remove('active', 'completed');
+
+            if (stepNum === 1) {
+                step1.classList.add('active');
+                stepDot1.classList.add('active');
+            } else if (stepNum === 2) {
+                step2.classList.add('active');
+                stepDot1.classList.add('completed');
+                stepDot2.classList.add('active');
+                // Start countdown when showing step 2
+                startResendCountdown();
+                // Focus first code input
+                setTimeout(() => {
+                    document.querySelector('.code-input[data-index="0"]').focus();
+                }, 100);
+            } else if (stepNum === 3) {
+                step3.classList.add('active');
+                stepDot1.classList.add('completed');
+                stepDot2.classList.add('completed');
+                stepDot3.classList.add('active');
+                // Focus password input
+                setTimeout(() => {
+                    document.getElementById('password').focus();
+                }, 100);
             }
         }
 
-        toggleEmail.addEventListener('click', () => setContactMethod('email'));
-        togglePhone.addEventListener('click', () => setContactMethod('phone'));
+        // ============================================
+        // STEP 1: REGISTRATION FORM
+        // ============================================
+        const emailInput = document.getElementById('email');
+        const phoneInput = document.getElementById('phone');
 
-        // Password strength validation
+        const form = document.getElementById('registerForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const step1Error = document.getElementById('step1Error');
+
+        function validateEmail(email) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        }
+
+        function validatePhone(phone) {
+            // Remove all non-digit characters except +
+            const cleaned = phone.replace(/[^\d+]/g, '');
+            // Check for E.164 format or at least 10 digits
+            if (cleaned.startsWith('+')) {
+                return cleaned.length >= 11;
+            }
+            return cleaned.length >= 10;
+        }
+
+        function clearFieldErrors() {
+            document.querySelectorAll('.field-error').forEach(el => el.textContent = '');
+            document.querySelectorAll('input.error').forEach(el => el.classList.remove('error'));
+        }
+
+        function setFieldError(fieldId, message) {
+            const errorEl = document.getElementById(fieldId + '_error');
+            const inputEl = document.getElementById(fieldId);
+            if (errorEl) errorEl.textContent = message;
+            if (inputEl) inputEl.classList.add('error');
+        }
+
+        function showStep1Error(message) {
+            if (!step1Error) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.id = 'step1Error';
+                errorDiv.textContent = message;
+                const subtitle = step1.querySelector('.subtitle');
+                subtitle.insertAdjacentElement('afterend', errorDiv);
+            } else {
+                step1Error.textContent = message;
+                step1Error.style.display = 'block';
+            }
+        }
+
+        // ============================================
+        // EXISTING USER MODAL
+        // ============================================
+        const existingUserModal = document.getElementById('existingUserModal');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const modalActions = document.getElementById('modalActions');
+
+        function showExistingUserModal(data) {
+            // Set title based on state
+            if (data.state === 'completed') {
+                modalTitle.textContent = 'Account Already Exists';
+            } else if (data.state === 'pending') {
+                modalTitle.textContent = 'Incomplete Registration';
+            } else if (data.state === 'cognito_only') {
+                modalTitle.textContent = 'Account Found';
+            }
+
+            modalMessage.textContent = data.message;
+
+            // Build action buttons based on options
+            modalActions.innerHTML = '';
+
+            if (data.options.includes('login')) {
+                const loginBtn = document.createElement('a');
+                loginBtn.href = '{{ url_for("login") }}';
+                loginBtn.className = 'modal-btn modal-btn-primary';
+                loginBtn.textContent = 'Sign In';
+                modalActions.appendChild(loginBtn);
+            }
+
+            if (data.options.includes('reset_password')) {
+                const resetBtn = document.createElement('a');
+                resetBtn.href = '{{ url_for("auth_forgot_password") }}';
+                resetBtn.className = 'modal-btn modal-btn-secondary';
+                resetBtn.textContent = 'Reset Password';
+                modalActions.appendChild(resetBtn);
+            }
+
+            if (data.options.includes('continue_registration')) {
+                const continueBtn = document.createElement('button');
+                continueBtn.type = 'button';
+                continueBtn.className = 'modal-btn modal-btn-primary';
+                continueBtn.textContent = 'Continue Registration';
+                continueBtn.onclick = function() {
+                    hideExistingUserModal();
+                    // Proceed with registration - will send new verification code
+                    proceedWithRegistration();
+                };
+                modalActions.appendChild(continueBtn);
+            }
+
+            if (data.options.includes('resend_verification')) {
+                const resendBtn = document.createElement('button');
+                resendBtn.type = 'button';
+                resendBtn.className = 'modal-btn modal-btn-primary';
+                resendBtn.textContent = 'Resend Verification Code';
+                resendBtn.onclick = function() {
+                    hideExistingUserModal();
+                    proceedWithRegistration();
+                };
+                modalActions.appendChild(resendBtn);
+            }
+
+            if (data.options.includes('start_over')) {
+                const startOverBtn = document.createElement('button');
+                startOverBtn.type = 'button';
+                startOverBtn.className = 'modal-btn modal-btn-text';
+                startOverBtn.textContent = 'Start Over with a Different Email';
+                startOverBtn.onclick = function() {
+                    hideExistingUserModal();
+                    emailInput.value = '';
+                    emailInput.focus();
+                };
+                modalActions.appendChild(startOverBtn);
+            }
+
+            // Always add a cancel option
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'modal-btn modal-btn-text';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.onclick = hideExistingUserModal;
+            modalActions.appendChild(cancelBtn);
+
+            existingUserModal.style.display = 'flex';
+        }
+
+        function hideExistingUserModal() {
+            existingUserModal.style.display = 'none';
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+                </svg>
+                Continue
+            `;
+        }
+
+        modalCloseBtn.addEventListener('click', hideExistingUserModal);
+
+        existingUserModal.addEventListener('click', function(e) {
+            if (e.target === existingUserModal) {
+                hideExistingUserModal();
+            }
+        });
+
+        function proceedWithRegistration() {
+            // Proceed with the registration submission
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span>Sending verification code...</span>';
+
+            const formData = new FormData(form);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.requiresVerification) {
+                    document.getElementById('maskedEmail').textContent = data.maskedContact || data.maskedEmail;
+                    showStep(2);
+                    if (data.sendError) {
+                        showStep2Error(data.sendError);
+                    }
+                } else if (!data.success) {
+                    showStep1Error(data.error || 'Registration failed. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Registration error:', error);
+                showStep1Error('An error occurred. Please try again.');
+            })
+            .finally(() => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+                    </svg>
+                    Continue
+                `;
+            });
+        }
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            clearFieldErrors();
+            let isValid = true;
+
+            // Check required text fields
+            const requiredFields = ['first_name', 'last_name'];
+            requiredFields.forEach(field => {
+                const input = document.getElementById(field);
+                if (!input.value.trim()) {
+                    setFieldError(field, 'This field is required');
+                    isValid = false;
+                }
+            });
+
+            // Check that at least one contact method is provided (email OR phone)
+            const emailValue = emailInput.value.trim();
+            const phoneValue = phoneInput.value.trim();
+
+            if (!emailValue && !phoneValue) {
+                setFieldError('email', 'Email or phone number is required');
+                isValid = false;
+            } else {
+                // Validate email format if provided
+                if (emailValue && !validateEmail(emailValue)) {
+                    setFieldError('email', 'Please enter a valid email address');
+                    isValid = false;
+                }
+                // Validate phone format if provided
+                if (phoneValue && !validatePhone(phoneValue)) {
+                    setFieldError('phone', 'Please enter a valid phone number');
+                    isValid = false;
+                }
+            }
+
+            // Check consent checkboxes
+            if (!document.getElementById('terms_accepted').checked) {
+                alert('You must agree to the Terms of Service and Privacy Policy');
+                isValid = false;
+            }
+            if (!document.getElementById('hipaa_acknowledged').checked) {
+                alert('You must acknowledge the HIPAA compliance requirements');
+                isValid = false;
+            }
+
+            if (!isValid) return;
+
+            // First, check if email already exists
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span>Checking...</span>';
+
+            if (emailValue) {
+                const checkData = new FormData();
+                checkData.append('email', emailValue);
+
+                fetch('{{ url_for("auth_check_email") }}', {
+                    method: 'POST',
+                    body: checkData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.exists) {
+                        // User exists - show modal with options
+                        showExistingUserModal(data);
+                    } else {
+                        // User doesn't exist - proceed with registration
+                        proceedWithRegistration();
+                    }
+                })
+                .catch(error => {
+                    console.error('Email check error:', error);
+                    // On error, proceed with registration anyway
+                    proceedWithRegistration();
+                });
+            } else {
+                // No email provided (phone only) - proceed directly
+                proceedWithRegistration();
+            }
+        });
+
+        // ============================================
+        // STEP 2: VERIFICATION
+        // ============================================
+        const codeInputs = document.querySelectorAll('.code-input');
+        const verifyForm = document.getElementById('verifyForm');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const backBtn = document.getElementById('backBtn');
+        const resendBtn = document.getElementById('resendBtn');
+        const countdownSpan = document.getElementById('countdown');
+        const step2Error = document.getElementById('step2Error');
+        const step2Success = document.getElementById('step2Success');
+
+        let countdownInterval = null;
+        let countdownValue = 30;
+
+        // Handle code input
+        codeInputs.forEach((input, index) => {
+            input.addEventListener('input', function(e) {
+                // Only allow digits
+                this.value = this.value.replace(/[^0-9]/g, '');
+
+                if (this.value.length === 1) {
+                    this.classList.add('filled');
+                    // Move to next input
+                    if (index < codeInputs.length - 1) {
+                        codeInputs[index + 1].focus();
+                    }
+                } else {
+                    this.classList.remove('filled');
+                }
+
+                // Update hidden field
+                updateVerificationCode();
+            });
+
+            input.addEventListener('keydown', function(e) {
+                // Handle backspace
+                if (e.key === 'Backspace' && !this.value && index > 0) {
+                    codeInputs[index - 1].focus();
+                }
+                // Handle paste
+                if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+                    return; // Allow paste
+                }
+            });
+
+            input.addEventListener('paste', function(e) {
+                e.preventDefault();
+                const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+                const digits = pastedData.replace(/[^0-9]/g, '').slice(0, 6);
+
+                digits.split('').forEach((digit, i) => {
+                    if (codeInputs[i]) {
+                        codeInputs[i].value = digit;
+                        codeInputs[i].classList.add('filled');
+                    }
+                });
+
+                // Focus on next empty input or last input
+                const nextEmpty = Array.from(codeInputs).findIndex(inp => !inp.value);
+                if (nextEmpty !== -1) {
+                    codeInputs[nextEmpty].focus();
+                } else {
+                    codeInputs[codeInputs.length - 1].focus();
+                }
+
+                updateVerificationCode();
+            });
+        });
+
+        function updateVerificationCode() {
+            const code = Array.from(codeInputs).map(i => i.value).join('');
+            document.getElementById('verificationCode').value = code;
+        }
+
+        function getVerificationCode() {
+            return Array.from(codeInputs).map(i => i.value).join('');
+        }
+
+        function clearCodeInputs() {
+            codeInputs.forEach(input => {
+                input.value = '';
+                input.classList.remove('filled');
+            });
+            document.getElementById('verificationCode').value = '';
+        }
+
+        function showStep2Error(message) {
+            step2Error.textContent = message;
+            step2Error.style.display = 'block';
+            step2Success.style.display = 'none';
+        }
+
+        function showStep2Success(message) {
+            step2Success.textContent = message;
+            step2Success.style.display = 'block';
+            step2Error.style.display = 'none';
+        }
+
+        function hideStep2Messages() {
+            step2Error.style.display = 'none';
+            step2Success.style.display = 'none';
+        }
+
+        // Verify form submission
+        verifyForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            hideStep2Messages();
+
+            const code = getVerificationCode();
+
+            if (code.length !== 6) {
+                showStep2Error('Please enter the complete 6-digit code.');
+                return;
+            }
+
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Verifying...';
+
+            const formData = new FormData();
+            formData.append('code', code);
+
+            fetch('{{ url_for("auth_verify") }}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.requiresPassword) {
+                        // Show Step 3 for password setup
+                        showStep2Success('Verification successful! Now set your password.');
+                        setTimeout(() => {
+                            showStep(3);
+                        }, 1000);
+                    } else {
+                        // Old flow: redirect to login
+                        showStep2Success(data.message || 'Email verified successfully!');
+                        setTimeout(() => {
+                            window.location.href = data.redirectUrl || '{{ url_for("login") }}';
+                        }, 1500);
+                    }
+                } else {
+                    if (data.sessionExpired) {
+                        showStep2Error(data.error);
+                        setTimeout(() => showStep(1), 2000);
+                    } else {
+                        showStep2Error(data.error || 'Verification failed. Please try again.');
+                    }
+                    verifyBtn.disabled = false;
+                    verifyBtn.textContent = 'Verify';
+                }
+            })
+            .catch(error => {
+                console.error('Verification error:', error);
+                showStep2Error('An error occurred. Please try again.');
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = 'Verify';
+            });
+        });
+
+        // Back button
+        backBtn.addEventListener('click', function() {
+            clearCodeInputs();
+            hideStep2Messages();
+            showStep(1);
+            // Stop countdown
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+        });
+
+        // Resend countdown
+        function startResendCountdown() {
+            countdownValue = 30;
+            resendBtn.disabled = true;
+            countdownSpan.textContent = countdownValue;
+            resendBtn.innerHTML = `Resend code (<span id="countdown">${countdownValue}</span>s)`;
+
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+
+            countdownInterval = setInterval(() => {
+                countdownValue--;
+                const span = document.getElementById('countdown');
+                if (span) span.textContent = countdownValue;
+
+                if (countdownValue <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    resendBtn.disabled = false;
+                    resendBtn.textContent = 'Resend code';
+                }
+            }, 1000);
+        }
+
+        // Resend button
+        resendBtn.addEventListener('click', function() {
+            if (resendBtn.disabled) return;
+
+            hideStep2Messages();
+            resendBtn.disabled = true;
+            resendBtn.textContent = 'Sending...';
+
+            fetch('{{ url_for("auth_resend_code") }}', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStep2Success(data.message || 'A new code has been sent.');
+                    clearCodeInputs();
+                    codeInputs[0].focus();
+                    startResendCountdown();
+                } else {
+                    if (data.sessionExpired) {
+                        showStep2Error(data.error);
+                        setTimeout(() => showStep(1), 2000);
+                    } else {
+                        showStep2Error(data.error || 'Failed to resend code.');
+                        resendBtn.disabled = false;
+                        resendBtn.textContent = 'Resend code';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Resend error:', error);
+                showStep2Error('An error occurred. Please try again.');
+                resendBtn.disabled = false;
+                resendBtn.textContent = 'Resend code';
+            });
+        });
+
+        // Re-enable submit button if page is reloaded
+        window.addEventListener('pageshow', function() {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+                </svg>
+                Continue
+            `;
+        });
+
+        // ============================================
+        // STEP 3: SET PASSWORD
+        // ============================================
+        const passwordForm = document.getElementById('passwordForm');
         const passwordInput = document.getElementById('password');
         const confirmPasswordInput = document.getElementById('confirm_password');
+        const completeBtn = document.getElementById('completeBtn');
         const strengthFill = document.getElementById('strengthFill');
         const strengthText = document.getElementById('strengthText');
+        const step3Error = document.getElementById('step3Error');
+        const step3Success = document.getElementById('step3Success');
+
         const requirements = {
             length: document.getElementById('req-length'),
             upper: document.getElementById('req-upper'),
@@ -661,16 +1437,16 @@
                 symbol: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
             };
 
-            // Update requirement indicators
             for (const [key, el] of Object.entries(requirements)) {
-                if (checks[key]) {
-                    el.classList.add('valid');
-                } else {
-                    el.classList.remove('valid');
+                if (el) {
+                    if (checks[key]) {
+                        el.classList.add('valid');
+                    } else {
+                        el.classList.remove('valid');
+                    }
                 }
             }
 
-            // Calculate strength
             const passedCount = Object.values(checks).filter(Boolean).length;
             let strength = '';
             let strengthLabel = '';
@@ -692,140 +1468,145 @@
                 strengthLabel = 'Strong password';
             }
 
-            strengthFill.className = 'strength-fill ' + strength;
-            strengthText.textContent = strengthLabel;
+            if (strengthFill) strengthFill.className = 'strength-fill ' + strength;
+            if (strengthText) strengthText.textContent = strengthLabel;
 
             return checks;
         }
 
-        passwordInput.addEventListener('input', function() {
-            checkPasswordStrength(this.value);
-            validatePasswordMatch();
-        });
-
         function validatePasswordMatch() {
-            const password = passwordInput.value;
-            const confirm = confirmPasswordInput.value;
+            const password = passwordInput ? passwordInput.value : '';
+            const confirm = confirmPasswordInput ? confirmPasswordInput.value : '';
             const error = document.getElementById('confirm_password_error');
 
             if (confirm && password !== confirm) {
-                error.textContent = 'Passwords do not match';
-                confirmPasswordInput.classList.add('error');
+                if (error) error.textContent = 'Passwords do not match';
+                if (confirmPasswordInput) confirmPasswordInput.classList.add('error');
                 return false;
             } else {
-                error.textContent = '';
-                confirmPasswordInput.classList.remove('error');
+                if (error) error.textContent = '';
+                if (confirmPasswordInput) confirmPasswordInput.classList.remove('error');
                 return true;
             }
         }
 
-        confirmPasswordInput.addEventListener('input', validatePasswordMatch);
-
-        // Form validation
-        const form = document.getElementById('registerForm');
-        const submitBtn = document.getElementById('submitBtn');
-
-        function validateEmail(email) {
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-        }
-
-        function validatePhone(phone) {
-            // Basic phone validation - at least 10 digits
-            const digits = phone.replace(/\D/g, '');
-            return digits.length >= 10;
-        }
-
-        function clearFieldErrors() {
-            document.querySelectorAll('.field-error').forEach(el => el.textContent = '');
-            document.querySelectorAll('input.error').forEach(el => el.classList.remove('error'));
-        }
-
-        function setFieldError(fieldId, message) {
-            const errorEl = document.getElementById(fieldId + '_error');
-            const inputEl = document.getElementById(fieldId);
-            if (errorEl) errorEl.textContent = message;
-            if (inputEl) inputEl.classList.add('error');
-        }
-
-        form.addEventListener('submit', function(e) {
-            clearFieldErrors();
-            let isValid = true;
-
-            // Check required text fields
-            const requiredFields = ['first_name', 'last_name', 'street_address', 'city', 'state', 'postal_code', 'country'];
-            requiredFields.forEach(field => {
-                const input = document.getElementById(field);
-                if (!input.value.trim()) {
-                    setFieldError(field, 'This field is required');
-                    isValid = false;
-                }
+        if (passwordInput) {
+            passwordInput.addEventListener('input', function() {
+                checkPasswordStrength(this.value);
+                validatePasswordMatch();
             });
+        }
 
-            // Check contact method
-            const contactMethod = primaryContact.value;
-            if (contactMethod === 'email') {
-                if (!emailInput.value.trim()) {
-                    setFieldError('email', 'Email is required');
-                    isValid = false;
-                } else if (!validateEmail(emailInput.value)) {
-                    setFieldError('email', 'Please enter a valid email address');
-                    isValid = false;
-                }
-            } else {
-                if (!phoneInput.value.trim()) {
-                    setFieldError('phone', 'Phone number is required');
-                    isValid = false;
-                } else if (!validatePhone(phoneInput.value)) {
-                    setFieldError('phone', 'Please enter a valid phone number');
-                    isValid = false;
-                }
-            }
+        if (confirmPasswordInput) {
+            confirmPasswordInput.addEventListener('input', validatePasswordMatch);
+        }
 
-            // Check password
-            const password = passwordInput.value;
-            const checks = checkPasswordStrength(password);
-            if (!password) {
-                setFieldError('password', 'Password is required');
-                isValid = false;
-            } else if (!Object.values(checks).every(Boolean)) {
-                setFieldError('password', 'Password does not meet all requirements');
-                isValid = false;
+        function showStep3Error(message) {
+            if (step3Error) {
+                step3Error.textContent = message;
+                step3Error.style.display = 'block';
             }
+            if (step3Success) {
+                step3Success.style.display = 'none';
+            }
+        }
 
-            // Check password match
-            if (!validatePasswordMatch()) {
-                isValid = false;
+        function showStep3Success(message) {
+            if (step3Success) {
+                step3Success.textContent = message;
+                step3Success.style.display = 'block';
             }
+            if (step3Error) {
+                step3Error.style.display = 'none';
+            }
+        }
 
-            // Check consent checkboxes
-            if (!document.getElementById('terms_accepted').checked) {
-                alert('You must agree to the Terms of Service and Privacy Policy');
-                isValid = false;
-            }
-            if (!document.getElementById('hipaa_acknowledged').checked) {
-                alert('You must acknowledge the HIPAA compliance requirements');
-                isValid = false;
-            }
+        function hideStep3Messages() {
+            if (step3Error) step3Error.style.display = 'none';
+            if (step3Success) step3Success.style.display = 'none';
+        }
 
-            if (!isValid) {
+        if (passwordForm) {
+            passwordForm.addEventListener('submit', function(e) {
                 e.preventDefault();
-            } else {
-                // Disable submit button to prevent double submission
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span>Creating account...</span>';
-            }
-        });
+                hideStep3Messages();
+                clearFieldErrors();
+                let isValid = true;
 
-        // Re-enable submit button if form is reset or page is reloaded
-        window.addEventListener('pageshow', function() {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
-                Create Account
-            `;
-        });
+                // Check password
+                const password = passwordInput.value;
+                const checks = checkPasswordStrength(password);
+                if (!password) {
+                    setFieldError('password', 'Password is required');
+                    isValid = false;
+                } else if (!Object.values(checks).every(Boolean)) {
+                    setFieldError('password', 'Password does not meet all requirements');
+                    isValid = false;
+                }
+
+                // Check password match
+                if (!validatePasswordMatch()) {
+                    isValid = false;
+                }
+
+                if (!isValid) return;
+
+                // Submit password
+                completeBtn.disabled = true;
+                completeBtn.innerHTML = '<span>Completing registration...</span>';
+
+                const formData = new FormData();
+                formData.append('password', password);
+
+                fetch('{{ url_for("auth_set_password") }}', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showStep3Success(data.message || 'Registration complete!');
+                        // Redirect to login after short delay
+                        setTimeout(() => {
+                            window.location.href = data.redirectUrl || '{{ url_for("login") }}';
+                        }, 1500);
+                    } else {
+                        if (data.sessionExpired) {
+                            showStep3Error(data.error);
+                            setTimeout(() => showStep(1), 2000);
+                        } else {
+                            showStep3Error(data.error || 'Failed to set password. Please try again.');
+                        }
+                        completeBtn.disabled = false;
+                        completeBtn.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                            Complete Registration
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Password set error:', error);
+                    showStep3Error('An error occurred. Please try again.');
+                    completeBtn.disabled = false;
+                    completeBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        Complete Registration
+                    `;
+                });
+            });
+        }
+
+        // Check if we should show step 2 on page load (server-side fallback)
+        {% if show_verification %}
+        showStep(2);
+        {% endif %}
     </script>
 </body>
 </html>

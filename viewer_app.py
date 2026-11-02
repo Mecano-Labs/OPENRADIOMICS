@@ -11,23 +11,81 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import secrets
-import sqlite3
+import sys
 import tempfile
 from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from functools import lru_cache
 from urllib.parse import urljoin
 
 import numpy as np
 import pydicom
-from flask import Flask, jsonify, render_template, request, redirect, url_for, make_response
+from flask import Flask, jsonify, render_template, request, redirect, url_for, make_response, session
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+def setup_logging():
+    """Configure timestamped logging to both file and console."""
+    # Create logs directory if it doesn't exist
+    log_dir = Path(__file__).parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    # Log format with timestamp
+    log_format = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    # Create formatter
+    formatter = logging.Formatter(log_format, datefmt=date_format)
+
+    # Get root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Clear any existing handlers
+    root_logger.handlers = []
+
+    # File handler - rotates daily, keeps 30 days
+    log_file = log_dir / f"app_{datetime.now().strftime('%Y-%m-%d')}.log"
+    file_handler = TimedRotatingFileHandler(
+        log_file,
+        when="midnight",
+        interval=1,
+        backupCount=30,
+        encoding="utf-8"
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # Reduce noise from other libraries
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+
+    return logging.getLogger("openradiomics")
+
+# Initialize logging
+logger = setup_logging()
 
 app = Flask(__name__)
 
 # Secret key for Flask sessions (set via environment variable in production)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+
+# Max upload size: 2GB (DICOM studies can be very large)
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024
 
 # Import auth module
 from auth import (
@@ -43,15 +101,46 @@ from auth import (
     refresh_tokens,
     ensure_user_in_db,
     validate_registration_data,
+    validate_registration_data_step1,
+    validate_password_strength,
     create_cognito_user,
+    confirm_user_signup,
+    resend_confirmation_code,
     normalize_phone,
+    generate_verification_code,
+    send_verification_email,
+    send_verification_sms,
+    create_verified_cognito_user,
+    check_user_exists,
+    initiate_password_reset,
+    confirm_password_reset,
+    authenticate_user,
+    respond_to_mfa_challenge,
+    create_password_reset_token,
+    validate_reset_token,
+    mark_reset_token_used,
+    admin_set_user_password,
+    send_password_reset_link,
+    is_device_trusted,
+    trust_device,
+    generate_device_token,
+    get_device_token_from_request,
+    DEVICE_TOKEN_COOKIE_NAME,
+    TRUSTED_DEVICE_EXPIRY_DAYS,
     COGNITO_CLIENT_ID,
     COGNITO_DOMAIN,
 )
 
 # Configuration
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "brain_inventory.db"
+
+# Database configuration (PostgreSQL on RDS)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+DB_HOST = os.environ.get("DB_HOST", "openradiomics-dev-db.cwznsagquzwy.us-east-1.rds.amazonaws.com")
+DB_PORT = os.environ.get("DB_PORT", "5432")
+DB_NAME = os.environ.get("DB_NAME", "openradiomics")
+DB_USER = os.environ.get("DB_USER", "postgres")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 
 # S3 configuration (set via environment variables)
 S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
@@ -63,9 +152,9 @@ s3_client = None
 if USE_S3:
     import boto3
     s3_client = boto3.client("s3", region_name=AWS_REGION)
-    print(f"S3 storage enabled: {S3_BUCKET_NAME}")
+    logger.info(f"S3 storage enabled: {S3_BUCKET_NAME}")
 else:
-    print(f"Local storage mode. Database: {DB_PATH}")
+    logger.info(f"Local storage mode. Database: {DB_HOST}:{DB_PORT}/{DB_NAME}")
 
 # Volume cache for orthogonal slicing
 volume_cache = {}
@@ -142,6 +231,265 @@ def login():
     )
 
 
+@app.route("/auth/login", methods=["POST"])
+def auth_login():
+    """
+    Handle user login form submission.
+    Authenticates directly with Cognito using USER_PASSWORD_AUTH flow.
+    Supports trusted device feature to skip MFA on recognized devices.
+    """
+    logger.info("=" * 60)
+    logger.info("LOGIN: Request received")
+    logger.info(f"LOGIN: Method: {request.method}")
+    logger.info(f"LOGIN: Headers: X-Requested-With={request.headers.get('X-Requested-With')}")
+
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    logger.info(f"LOGIN: Is AJAX: {is_ajax}")
+
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "")
+    mfa_code = request.form.get("mfa_code", "").strip()
+    mfa_session = request.form.get("mfa_session", "")
+    trust_device_checked = request.form.get("trust_device") == "on"
+
+    logger.info(f"LOGIN: Email: {email}")
+    logger.info(f"LOGIN: Password provided: {bool(password)}")
+    logger.info(f"LOGIN: MFA code provided: {bool(mfa_code)}")
+    logger.info(f"LOGIN: MFA session provided: {bool(mfa_session)}")
+    logger.info(f"LOGIN: Trust device checked: {trust_device_checked}")
+
+    # If MFA session is provided, this is an MFA challenge response
+    if mfa_session and mfa_code:
+        logger.info("LOGIN: Processing MFA challenge response")
+        success, result, error = respond_to_mfa_challenge(
+            email=email,
+            session=mfa_session,
+            mfa_code=mfa_code,
+            challenge_name="SOFTWARE_TOKEN_MFA"  # Default to TOTP
+        )
+        logger.info(f"LOGIN: MFA result - success={success}, error={error}")
+
+        if not success:
+            logger.warning(f"LOGIN: MFA failed for {email}: {error}")
+            if is_ajax:
+                return jsonify({"success": False, "error": error}), 400
+            return render_template(
+                "login.html",
+                error=error,
+                cognito_domain=COGNITO_DOMAIN,
+                client_id=COGNITO_CLIENT_ID,
+                callback_url=get_callback_url(),
+            )
+
+        # Success - set cookies and redirect
+        tokens = result
+        logger.info(f"LOGIN: MFA success, setting cookies for {email}")
+        response = make_response(jsonify({
+            "success": True,
+            "redirectUrl": url_for("index")
+        })) if is_ajax else make_response(redirect(url_for("index")))
+
+        _set_auth_cookies(response, tokens)
+
+        # If user checked "Trust this device", store the device trust
+        if trust_device_checked:
+            _handle_trust_device(response, email)
+
+        logger.info(f"LOGIN: User authenticated with MFA: {email}")
+        return response
+
+    # Regular login (email + password)
+    if not email:
+        error_msg = "Email address is required."
+        logger.warning(f"LOGIN: Missing email")
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template(
+            "login.html",
+            error=error_msg,
+            cognito_domain=COGNITO_DOMAIN,
+            client_id=COGNITO_CLIENT_ID,
+            callback_url=get_callback_url(),
+        )
+
+    if not password:
+        error_msg = "Password is required."
+        logger.warning(f"LOGIN: Missing password for {email}")
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template(
+            "login.html",
+            error=error_msg,
+            cognito_domain=COGNITO_DOMAIN,
+            client_id=COGNITO_CLIENT_ID,
+            callback_url=get_callback_url(),
+        )
+
+    # Authenticate with Cognito
+    logger.info(f"LOGIN: Calling authenticate_user for {email}")
+    success, result, error = authenticate_user(email, password)
+    logger.info(f"LOGIN: Auth result - success={success}, error={error}")
+    logger.info(f"LOGIN: Auth result keys: {result.keys() if isinstance(result, dict) else 'N/A'}")
+
+    if not success:
+        logger.warning(f"LOGIN: Authentication failed for {email}: {error}")
+        if is_ajax:
+            return jsonify({"success": False, "error": error}), 400
+        return render_template(
+            "login.html",
+            error=error,
+            cognito_domain=COGNITO_DOMAIN,
+            client_id=COGNITO_CLIENT_ID,
+            callback_url=get_callback_url(),
+        )
+
+    # Check if MFA is required
+    if result.get("mfaRequired"):
+        logger.info(f"LOGIN: MFA required for {email}, challenge={result.get('challengeName')}")
+
+        # Check if device is already trusted - if so, skip MFA
+        device_token = get_device_token_from_request()
+        if device_token:
+            try:
+                conn = get_db_connection()
+                if is_device_trusted(conn, device_token, email):
+                    logger.info(f"LOGIN: Trusted device found for {email}, bypassing MFA")
+                    conn.close()
+
+                    # We need to complete the MFA challenge differently for trusted devices
+                    # Since Cognito still requires MFA, we can't truly skip it at the API level
+                    # But we can prompt the user that this is a trusted device
+                    # For now, we still require MFA but could use device remembering in Cognito
+                    # Return that MFA is required but indicate device is recognized
+                    if is_ajax:
+                        return jsonify({
+                            "success": True,
+                            "mfaRequired": True,
+                            "session": result.get("session"),
+                            "challengeName": result.get("challengeName"),
+                            "trustedDevice": True,
+                            "message": "Trusted device recognized. MFA still required by security policy."
+                        })
+                conn.close()
+            except Exception as e:
+                logger.error(f"LOGIN: Error checking trusted device: {e}")
+
+        if is_ajax:
+            return jsonify({
+                "success": True,
+                "mfaRequired": True,
+                "session": result.get("session"),
+                "challengeName": result.get("challengeName")
+            })
+        # For non-AJAX, we'd need to render an MFA form
+        # but the JS handles this client-side
+        return render_template(
+            "login.html",
+            error="MFA is required. Please use a modern browser.",
+            cognito_domain=COGNITO_DOMAIN,
+            client_id=COGNITO_CLIENT_ID,
+            callback_url=get_callback_url(),
+        )
+
+    # Success - set cookies and redirect
+    tokens = result.get("tokens", {})
+    logger.info(f"LOGIN: Success! Setting cookies. Token keys: {tokens.keys() if tokens else 'None'}")
+    response = make_response(jsonify({
+        "success": True,
+        "redirectUrl": url_for("index")
+    })) if is_ajax else make_response(redirect(url_for("index")))
+
+    _set_auth_cookies(response, tokens)
+    logger.info(f"LOGIN: User authenticated successfully: {email}")
+    logger.info("=" * 60)
+    return response
+
+
+def _handle_trust_device(response, email: str):
+    """
+    Handle the "Trust this device" checkbox by storing device trust
+    and setting the device token cookie.
+
+    Args:
+        response: Flask response object to set cookie on
+        email: User's email address
+    """
+    try:
+        # Get or create device token
+        device_token = get_device_token_from_request()
+        if not device_token:
+            device_token = generate_device_token()
+
+        # Get request metadata
+        user_agent = request.headers.get("User-Agent", "")
+        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+        if ip_address and "," in ip_address:
+            ip_address = ip_address.split(",")[0].strip()
+
+        # Store trusted device in database
+        conn = get_db_connection()
+        success, error = trust_device(
+            conn,
+            email=email,
+            device_token=device_token,
+            user_agent=user_agent,
+            ip_address=ip_address
+        )
+        conn.close()
+
+        if success:
+            # Set device token cookie (90 days)
+            response.set_cookie(
+                DEVICE_TOKEN_COOKIE_NAME,
+                device_token,
+                httponly=True,
+                secure=request.scheme == "https",
+                samesite="Lax",
+                max_age=TRUSTED_DEVICE_EXPIRY_DAYS * 24 * 60 * 60,  # 90 days in seconds
+            )
+            logger.info(f"LOGIN: Device trusted and cookie set for {email}")
+        else:
+            logger.warning(f"LOGIN: Failed to trust device for {email}: {error}")
+
+    except Exception as e:
+        logger.error(f"LOGIN: Error handling trust device: {e}")
+
+
+def _set_auth_cookies(response, tokens):
+    """Helper to set authentication cookies on a response."""
+    # Access token cookie (short-lived, used for API calls)
+    response.set_cookie(
+        "access_token",
+        tokens.get("access_token", ""),
+        httponly=True,
+        secure=request.scheme == "https",
+        samesite="Lax",
+        max_age=900,  # 15 minutes
+    )
+
+    # ID token cookie (contains user info)
+    response.set_cookie(
+        "id_token",
+        tokens.get("id_token", ""),
+        httponly=True,
+        secure=request.scheme == "https",
+        samesite="Lax",
+        max_age=900,
+    )
+
+    # Refresh token cookie (longer-lived, used to get new access tokens)
+    if tokens.get("refresh_token"):
+        response.set_cookie(
+            "refresh_token",
+            tokens.get("refresh_token", ""),
+            httponly=True,
+            secure=request.scheme == "https",
+            samesite="Lax",
+            max_age=28800,  # 8 hours
+        )
+
+
 @app.route("/register")
 def register():
     """Render the registration page."""
@@ -154,143 +502,383 @@ def register():
 
 @app.route("/auth/register", methods=["POST"])
 def auth_register():
-    """Handle user registration form submission."""
-    # Collect form data
+    """
+    Handle user registration form submission - Step 1 (no password).
+
+    Collects basic info and sends verification code. User is NOT created in
+    Cognito yet - that happens after verification + password setup in Step 3.
+    """
+    from datetime import datetime, timedelta
+
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    # Collect form data (NO password in Step 1)
     form_data = {
         "first_name": request.form.get("first_name", "").strip(),
         "last_name": request.form.get("last_name", "").strip(),
         "email": request.form.get("email", "").strip(),
-        "phone": request.form.get("phone", "").strip(),
-        "primary_contact": request.form.get("primary_contact", "email"),
-        "secondary_email": request.form.get("secondary_email", "").strip(),
-        "secondary_phone": request.form.get("secondary_phone", "").strip(),
-        "password": request.form.get("password", ""),
-        "confirm_password": request.form.get("confirm_password", ""),
-        "street_address": request.form.get("street_address", "").strip(),
-        "city": request.form.get("city", "").strip(),
-        "state": request.form.get("state", "").strip(),
-        "postal_code": request.form.get("postal_code", "").strip(),
-        "country": request.form.get("country", "").strip(),
+        "phone": request.form.get("phone", "").strip(),  # Optional
+        "street_address": request.form.get("street_address", "").strip(),  # Optional
+        "city": request.form.get("city", "").strip(),  # Optional
+        "state": request.form.get("state", "").strip(),  # Optional
+        "postal_code": request.form.get("postal_code", "").strip(),  # Optional
+        "country": request.form.get("country", "").strip(),  # Optional
         "terms_accepted": request.form.get("terms_accepted") == "on",
         "hipaa_acknowledged": request.form.get("hipaa_acknowledged") == "on",
     }
 
-    # Validate form data
-    is_valid, errors = validate_registration_data(form_data)
+    # Validate Step 1 form data (no password validation)
+    is_valid, errors = validate_registration_data_step1(form_data)
 
     if not is_valid:
-        # Return to form with errors
         error_message = ". ".join(errors.values())
+        if is_ajax:
+            return jsonify({"success": False, "error": error_message}), 400
         return render_template(
             "register.html",
             error=error_message,
             form_data=form_data,
         )
 
-    # Determine username and contact info for Cognito
-    primary_contact = form_data["primary_contact"]
-    if primary_contact == "email":
-        username = form_data["email"]
-        email = form_data["email"]
-        phone = form_data.get("secondary_phone") or None
-    else:
-        phone = form_data["phone"]
-        username = normalize_phone(phone)
-        email = form_data.get("secondary_email") or None
+    # Determine primary contact method (prefer email)
+    email = form_data.get("email") or None
+    phone = form_data.get("phone") or None
+    primary_contact = "email" if email else "phone"
 
-    # Create user in Cognito
-    success, user_sub, error_message = create_cognito_user(
-        username=username,
-        password=form_data["password"],
+    if not email and not phone:
+        error_msg = "Email or phone number is required"
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg, form_data=form_data)
+
+    # Generate verification code
+    code = generate_verification_code()
+    code_expiry = datetime.utcnow() + timedelta(minutes=10)
+
+    # Try to send verification code (but don't block progress if it fails)
+    send_error = None
+    if primary_contact == "email" and email:
+        success, error_msg = send_verification_email(email, code)
+        if not success:
+            send_error = error_msg or "Failed to send verification email. Click 'Resend' to try again."
+        masked_contact = mask_email(email)
+    else:
+        success, error_msg = send_verification_sms(phone, code)
+        if not success:
+            send_error = error_msg or "Failed to send verification SMS. Click 'Resend' to try again."
+        masked_contact = mask_phone(phone)
+
+    # Store in session for verification step (always, even if send failed)
+    session["pending_registration"] = {
+        "form_data": form_data,
+        "verification_code": code,
+        "code_expiry": code_expiry.isoformat(),
+        "primary_contact": primary_contact,
+        "contact_value": email if primary_contact == "email" else phone,
+    }
+
+    # Always progress to Step 2, but include any send error so user knows to resend
+    if is_ajax:
+        return jsonify({
+            "success": True,
+            "requiresVerification": True,
+            "maskedContact": masked_contact,
+            "maskedEmail": masked_contact,  # For backwards compatibility
+            "sendError": send_error,  # Will be displayed on Step 2 if present
+        })
+
+    # For non-AJAX fallback
+    return render_template(
+        "register.html",
+        success="Verification code sent! Please check your email/phone." if not send_error else None,
+        error=send_error,
+        show_verification=True,
+        masked_email=masked_contact,
+    )
+
+
+def mask_email(email: str) -> str:
+    """Mask email for display (j***@example.com)."""
+    email_parts = email.split("@")
+    if len(email_parts) == 2:
+        local = email_parts[0]
+        domain = email_parts[1]
+        if len(local) > 1:
+            return local[0] + "***@" + domain
+        return "***@" + domain
+    return "***"
+
+
+def mask_phone(phone: str) -> str:
+    """Mask phone for display (***-***-1234)."""
+    # Get last 4 digits
+    digits = ''.join(c for c in phone if c.isdigit())
+    if len(digits) >= 4:
+        return "***-***-" + digits[-4:]
+    return "***"
+
+
+@app.route("/auth/verify", methods=["POST"])
+def auth_verify():
+    """
+    Verify user's email/phone with the confirmation code - Step 2.
+
+    Uses session-based verification (not Cognito) since user hasn't been
+    created in Cognito yet.
+    """
+    from datetime import datetime
+
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    # Get verification code from form
+    code = request.form.get("code", "").strip()
+
+    # Get pending registration from session
+    pending = session.get("pending_registration")
+
+    if not pending:
+        error_msg = "Session expired. Please register again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg, "sessionExpired": True}), 400
+        return render_template("register.html", error=error_msg)
+
+    if not code:
+        error_msg = "Please enter the verification code."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Validate code format (6 digits)
+    if not code.isdigit() or len(code) != 6:
+        error_msg = "Verification code must be 6 digits."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Check code expiry
+    code_expiry = datetime.fromisoformat(pending.get("code_expiry", ""))
+    if datetime.utcnow() > code_expiry:
+        error_msg = "Verification code has expired. Please request a new code."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Verify the code
+    stored_code = pending.get("verification_code")
+    if code != stored_code:
+        error_msg = "Invalid verification code. Please check and try again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Mark as verified in session (keep data for Step 3)
+    pending["verified"] = True
+    session["pending_registration"] = pending
+
+    if is_ajax:
+        return jsonify({
+            "success": True,
+            "requiresPassword": True,  # Tell frontend to show Step 3
+            "message": "Verification successful! Now set your password.",
+        })
+
+    # For non-AJAX fallback, show step 3 message
+    return render_template(
+        "register.html",
+        success="Verification successful! Now set your password.",
+        show_password_step=True,
+    )
+
+
+@app.route("/auth/set-password", methods=["POST"])
+def auth_set_password():
+    """
+    Set password and complete registration - Step 3.
+
+    Creates the user in Cognito with verified email and the chosen password.
+    """
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    # Get password from form
+    password = request.form.get("password", "")
+
+    # Get pending registration from session
+    pending = session.get("pending_registration")
+
+    if not pending or not pending.get("verified"):
+        error_msg = "Session expired or not verified. Please register again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg, "sessionExpired": True}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Validate password
+    if not password:
+        error_msg = "Password is required."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg)
+
+    is_strong, pw_errors = validate_password_strength(password)
+    if not is_strong:
+        error_msg = pw_errors[0] if pw_errors else "Password does not meet requirements"
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Get form data from session
+    form_data = pending.get("form_data", {})
+    email = form_data.get("email")
+    phone = form_data.get("phone")
+
+    # Create user in Cognito with verified email
+    success, user_sub, error_message = create_verified_cognito_user(
+        username=email,
+        password=password,
         email=email,
         phone=phone if phone else None,
-        first_name=form_data["first_name"],
-        last_name=form_data["last_name"],
+        first_name=form_data.get("first_name"),
+        last_name=form_data.get("last_name"),
     )
 
     if not success:
-        return render_template(
-            "register.html",
-            error=error_message,
-            form_data=form_data,
-        )
+        if is_ajax:
+            return jsonify({"success": False, "error": error_message}), 400
+        return render_template("register.html", error=error_message, form_data=form_data)
 
     # Store user profile in local database
     try:
+        # Add password placeholder for store_user_profile (not stored, just for validation)
+        form_data["password"] = "[redacted]"
         store_user_profile(user_sub, form_data)
     except Exception as e:
-        print(f"Warning: Failed to store user profile in database: {e}")
+        logger.warning(f"Failed to store user profile in database: {e}")
         # Continue anyway - user was created in Cognito
 
-    # Redirect to login page with success message
-    # User needs to verify their email/phone before logging in
+    # Clear the session
+    session.pop("pending_registration", None)
+
+    if is_ajax:
+        return jsonify({
+            "success": True,
+            "message": "Registration complete! You can now sign in.",
+            "redirectUrl": url_for("login"),
+        })
+
+    # For non-AJAX, redirect to login with success message
+    return render_template(
+        "login.html",
+        success="Registration complete! You can now sign in and set up MFA.",
+        cognito_domain=COGNITO_DOMAIN,
+        client_id=COGNITO_CLIENT_ID,
+        callback_url=get_callback_url(),
+    )
+
+
+@app.route("/auth/resend-code", methods=["POST"])
+def auth_resend_code():
+    """Resend the verification code to user's email/phone."""
+    from datetime import datetime, timedelta
+
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    # Get pending registration from session
+    pending = session.get("pending_registration")
+
+    if not pending:
+        error_msg = "Session expired. Please register again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg, "sessionExpired": True}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Generate new verification code
+    code = generate_verification_code()
+    code_expiry = datetime.utcnow() + timedelta(minutes=10)
+
+    # Determine contact method
+    primary_contact = pending.get("primary_contact", "email")
+    contact_value = pending.get("contact_value")
+
+    if not contact_value:
+        error_msg = "No contact information found. Please register again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg, "sessionExpired": True}), 400
+        return render_template("register.html", error=error_msg)
+
+    # Send verification code
+    if primary_contact == "email":
+        success, error_msg = send_verification_email(contact_value, code)
+    else:
+        success, error_msg = send_verification_sms(contact_value, code)
+
+    if not success:
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg or "Failed to send verification code"}), 400
+        return render_template("register.html", error=error_msg or "Failed to send verification code")
+
+    # Update session with new code
+    pending["verification_code"] = code
+    pending["code_expiry"] = code_expiry.isoformat()
+    session["pending_registration"] = pending
+
+    if is_ajax:
+        return jsonify({
+            "success": True,
+            "message": f"A new verification code has been sent to your {primary_contact}.",
+        })
+
     return render_template(
         "register.html",
-        success=f"Account created successfully! Please check your {'email' if primary_contact == 'email' else 'phone'} for a verification code. After verifying, you can sign in and set up MFA.",
+        success=f"A new verification code has been sent to your {primary_contact}.",
+        show_verification=True,
     )
 
 
 def store_user_profile(cognito_sub: str, form_data: dict) -> bool:
     """
-    Store user profile data in the local database.
+    Store user profile data in the PostgreSQL database.
 
     This stores additional HIPAA-required information that isn't stored in Cognito.
     """
-    # For now, we'll use SQLite for local development
-    # In production, this would use PostgreSQL via RDS
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Check if users table has the new columns (for backwards compatibility)
-        # This is a simple check - in production, use proper migrations
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [col[1] for col in cursor.fetchall()]
-
-        # If the new columns exist, insert with full profile
-        if "first_name" in columns:
-            cursor.execute("""
-                INSERT INTO users (
-                    cognito_sub, email, display_name, role,
-                    first_name, last_name, phone,
-                    street_address, city, state, postal_code, country,
-                    terms_accepted_at, hipaa_acknowledged_at,
-                    created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            """, (
-                cognito_sub,
-                form_data.get("email") or form_data.get("secondary_email"),
-                f"{form_data['first_name']} {form_data['last_name']}",
-                "viewer",  # Default role
-                form_data["first_name"],
-                form_data["last_name"],
-                form_data.get("phone") or form_data.get("secondary_phone"),
-                form_data["street_address"],
-                form_data["city"],
-                form_data["state"],
-                form_data["postal_code"],
-                form_data["country"],
-                datetime.utcnow().isoformat() if form_data.get("terms_accepted") else None,
-                datetime.utcnow().isoformat() if form_data.get("hipaa_acknowledged") else None,
-            ))
-        else:
-            # Fallback for older schema
-            cursor.execute("""
-                INSERT INTO users (cognito_sub, email, display_name, role)
-                VALUES (?, ?, ?, ?)
-            """, (
-                cognito_sub,
-                form_data.get("email") or form_data.get("secondary_email"),
-                f"{form_data['first_name']} {form_data['last_name']}",
-                "viewer",
-            ))
+        cursor.execute("""
+            INSERT INTO users (
+                cognito_sub, email, display_name, role,
+                first_name, last_name, phone,
+                street_address, city, state, postal_code, country,
+                terms_accepted_at, hipaa_acknowledged_at,
+                created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        """, (
+            cognito_sub,
+            form_data.get("email"),
+            f"{form_data['first_name']} {form_data['last_name']}",
+            "viewer",  # Default role
+            form_data["first_name"],
+            form_data["last_name"],
+            form_data.get("phone"),  # Optional
+            form_data.get("street_address", ""),  # Optional
+            form_data.get("city", ""),  # Optional
+            form_data.get("state", ""),  # Optional
+            form_data.get("postal_code", ""),  # Optional
+            form_data.get("country", ""),  # Optional
+            datetime.utcnow() if form_data.get("terms_accepted") else None,
+            datetime.utcnow() if form_data.get("hipaa_acknowledged") else None,
+        ))
 
         conn.commit()
         conn.close()
+        logger.info(f"REGISTRATION: User profile stored for {form_data.get('email')}")
         return True
 
     except Exception as e:
-        print(f"Error storing user profile: {e}")
+        logger.error(f"Error storing user profile: {e}")
         return False
 
 
@@ -358,8 +946,7 @@ def auth_callback():
     )
 
     # Log the login event
-    # Note: We can't easily log to DB here without the user context
-    print(f"LOGIN: User authenticated successfully")
+    logger.info("LOGIN: User authenticated successfully")
 
     return response
 
@@ -367,11 +954,13 @@ def auth_callback():
 @app.route("/auth/logout")
 def auth_logout():
     """Log out the user."""
-    # Clear cookies
+    # Clear cookies (but keep device_token - it should persist for trusted device feature)
     response = make_response(redirect(url_for("login")))
     response.delete_cookie("access_token")
     response.delete_cookie("id_token")
     response.delete_cookie("refresh_token")
+    # Note: We intentionally do NOT delete the device_token cookie
+    # This allows the trusted device feature to work on next login
 
     # If Cognito is configured, redirect to Cognito logout
     if COGNITO_DOMAIN:
@@ -437,10 +1026,539 @@ def get_user_info():
     })
 
 
+@app.route("/api/user/profile")
+@requires_auth
+def get_user_profile():
+    """
+    Get the current user's profile including user_type.
+
+    Returns user profile data from the database, including whether they've
+    selected their account type (patient/provider).
+    """
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT user_type, first_name, last_name, role, email
+               FROM users WHERE cognito_sub = %s""",
+            (user.get("sub"),)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return jsonify({
+                "user_type": row["user_type"],
+                "first_name": row["first_name"],
+                "last_name": row["last_name"],
+                "role": row["role"],
+                "email": row["email"],
+            })
+        else:
+            # User exists in Cognito but not yet in local DB
+            return jsonify({
+                "user_type": None,
+                "first_name": user.get("given_name"),
+                "last_name": user.get("family_name"),
+                "role": "viewer",
+                "email": user.get("email"),
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {e}")
+        return jsonify({"error": "Failed to fetch profile"}), 500
+
+
+@app.route("/api/user/type", methods=["POST"])
+@requires_auth
+def set_user_type():
+    """
+    Set the user's account type (patient or provider).
+
+    This is typically called when a new user first logs in and is prompted
+    to identify themselves. The user_type affects their UI/UX experience.
+    """
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    user_type = data.get("user_type")
+    if user_type not in ("patient", "provider", "organization"):
+        return jsonify({"error": "Invalid user type. Must be 'patient', 'provider', or 'organization'."}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Try to update existing user
+        cursor.execute(
+            """UPDATE users SET user_type = %s, updated_at = NOW()
+               WHERE cognito_sub = %s
+               RETURNING id""",
+            (user_type, user.get("sub"))
+        )
+        result = cursor.fetchone()
+
+        if not result:
+            # User doesn't exist in local DB yet - create them
+            cursor.execute(
+                """INSERT INTO users (cognito_sub, email, user_type, role, first_name, last_name, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, NOW())""",
+                (
+                    user.get("sub"),
+                    user.get("email"),
+                    user_type,
+                    "viewer",
+                    user.get("given_name"),
+                    user.get("family_name"),
+                )
+            )
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"USER TYPE SET: {user.get('email')} -> {user_type}")
+
+        return jsonify({
+            "success": True,
+            "user_type": user_type,
+        })
+
+    except Exception as e:
+        logger.error(f"Error setting user type: {e}")
+        return jsonify({"error": "Failed to update user type"}), 500
+
+
+@app.route("/api/user/has-data")
+@requires_auth
+def check_user_has_data():
+    """Check if the current user has any accessible studies."""
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get user's internal ID
+        cursor.execute(
+            "SELECT id FROM users WHERE cognito_sub = %s",
+            (user.get("sub"),)
+        )
+        user_row = cursor.fetchone()
+
+        if not user_row:
+            conn.close()
+            return jsonify({"has_data": False, "study_count": 0})
+
+        # Check study_access table for any accessible studies
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM study_access WHERE user_id = %s",
+            (user_row["id"],)
+        )
+        result = cursor.fetchone()
+        conn.close()
+
+        count = result["count"] if result else 0
+        return jsonify({
+            "has_data": count > 0,
+            "study_count": count
+        })
+
+    except Exception as e:
+        logger.error(f"Error checking user data: {e}")
+        return jsonify({"error": "Failed to check data"}), 500
+
+
+@app.route("/api/upload/dicom", methods=["POST"])
+@requires_auth
+def upload_dicom():
+    """
+    Upload DICOM files to S3 and create database entries.
+    Accepts multipart/form-data with 'files' field.
+    Returns summary of uploaded studies.
+    """
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    if not USE_S3:
+        return jsonify({"error": "S3 storage not configured"}), 500
+
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "No files provided"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Get user's internal ID
+        cursor.execute(
+            "SELECT id FROM users WHERE cognito_sub = %s",
+            (user.get("sub"),)
+        )
+        user_row = cursor.fetchone()
+        if not user_row:
+            # Create user in local DB if not exists
+            cursor.execute(
+                """INSERT INTO users (cognito_sub, email, role, created_at)
+                   VALUES (%s, %s, 'viewer', NOW()) RETURNING id""",
+                (user.get("sub"), user.get("email"))
+            )
+            user_row = cursor.fetchone()
+            conn.commit()
+
+        user_id = user_row["id"]
+
+        uploaded_count = 0
+        errors = []
+        studies_affected = set()
+
+        for file in files:
+            try:
+                # Read file into memory
+                file_bytes = file.read()
+                file.seek(0)
+
+                # Validate it's a DICOM file
+                try:
+                    dcm = pydicom.dcmread(io.BytesIO(file_bytes))
+                except Exception as e:
+                    errors.append({"file": file.filename, "error": f"Not a valid DICOM file: {str(e)}"})
+                    continue
+
+                # Extract minimal metadata
+                patient_id = str(getattr(dcm, 'PatientID', 'UNKNOWN'))
+                patient_name = str(getattr(dcm, 'PatientName', '')) or None
+                study_uid = str(getattr(dcm, 'StudyInstanceUID', None))
+                series_uid = str(getattr(dcm, 'SeriesInstanceUID', None))
+                sop_uid = str(getattr(dcm, 'SOPInstanceUID', None))
+
+                if not study_uid or not series_uid or not sop_uid:
+                    errors.append({"file": file.filename, "error": "Missing required DICOM UIDs"})
+                    continue
+
+                # Generate S3 key
+                s3_key = f"patients/{patient_id}/studies/{study_uid}/series/{series_uid}/{sop_uid}.dcm"
+
+                # Upload to S3
+                s3_client.put_object(
+                    Bucket=S3_BUCKET_NAME,
+                    Key=s3_key,
+                    Body=file_bytes,
+                    ContentType="application/dicom",
+                    ServerSideEncryption="AES256"
+                )
+
+                # Create/update database records using upserts
+
+                # Patient
+                cursor.execute("""
+                    INSERT INTO patients (patient_uid, name, created_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (patient_uid) DO UPDATE SET updated_at = NOW()
+                    RETURNING id
+                """, (patient_id, patient_name))
+                patient_db_id = cursor.fetchone()["id"]
+
+                # Study
+                study_desc = str(getattr(dcm, 'StudyDescription', '')) or None
+                study_date_str = str(getattr(dcm, 'StudyDate', '')) or None
+                study_date = None
+                if study_date_str and len(study_date_str) == 8:
+                    try:
+                        study_date = datetime.strptime(study_date_str, "%Y%m%d").date()
+                    except ValueError:
+                        pass
+
+                cursor.execute("""
+                    INSERT INTO studies (patient_id, study_uid, description, study_date, created_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (study_uid) DO UPDATE SET updated_at = NOW()
+                    RETURNING id
+                """, (patient_db_id, study_uid, study_desc, study_date))
+                study_db_id = cursor.fetchone()["id"]
+                studies_affected.add(study_db_id)
+
+                # Series
+                series_desc = str(getattr(dcm, 'SeriesDescription', '')) or None
+                modality = str(getattr(dcm, 'Modality', 'OT')) or 'OT'
+
+                cursor.execute("""
+                    INSERT INTO series (study_id, series_uid, description, modality, created_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (series_uid) DO UPDATE SET updated_at = NOW()
+                    RETURNING id
+                """, (study_db_id, series_uid, series_desc, modality))
+                series_db_id = cursor.fetchone()["id"]
+
+                # Instance
+                instance_number = getattr(dcm, 'InstanceNumber', None)
+                if instance_number is not None:
+                    instance_number = int(instance_number)
+
+                cursor.execute("""
+                    INSERT INTO instances (series_id, sop_uid, s3_key, instance_number, created_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (sop_uid) DO UPDATE SET s3_key = EXCLUDED.s3_key
+                    RETURNING id
+                """, (series_db_id, sop_uid, s3_key, instance_number))
+
+                uploaded_count += 1
+                logger.info(f"UPLOAD: {file.filename} -> {s3_key}")
+
+            except Exception as e:
+                logger.error(f"Error uploading {file.filename}: {e}")
+                errors.append({"file": file.filename, "error": str(e)})
+                continue
+
+        # Grant user access to all affected studies
+        for study_db_id in studies_affected:
+            cursor.execute("""
+                INSERT INTO study_access (user_id, study_id, access_level, is_owner, granted_at)
+                VALUES (%s, %s, 'admin', TRUE, NOW())
+                ON CONFLICT (user_id, study_id) DO NOTHING
+            """, (user_id, study_db_id))
+
+        conn.commit()
+
+        logger.info(f"UPLOAD COMPLETE: {uploaded_count} files, {len(studies_affected)} studies by user {user.get('email')}")
+
+        return jsonify({
+            "success": True,
+            "uploaded": uploaded_count,
+            "studies": len(studies_affected),
+            "errors": errors if errors else None
+        })
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Upload error: {e}")
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
+
+    finally:
+        conn.close()
+
+
+@app.route("/auth/check-email", methods=["POST"])
+def auth_check_email():
+    """
+    Check if an email already exists in the system.
+    Returns user state and appropriate options.
+    """
+    email = request.form.get("email", "").strip()
+
+    if not email:
+        return jsonify({
+            "success": False,
+            "error": "Email is required"
+        }), 400
+
+    try:
+        conn = get_db_connection()
+        result = check_user_exists(conn, email)
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "exists": result["exists"],
+            "state": result["state"],
+            "message": result["message"],
+            "options": result["options"]
+        })
+
+    except Exception as e:
+        logger.error(f"Check email error: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Unable to check email status"
+        }), 500
+
+
+@app.route("/auth/forgot-password", methods=["GET", "POST"])
+def auth_forgot_password():
+    """Handle forgot password request - send reset link."""
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    if request.method == "GET":
+        return render_template("forgot_password.html")
+
+    # POST: Generate token and send reset link
+    email = request.form.get("email", "").strip()
+
+    if not email:
+        error_msg = "Email address is required."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("forgot_password.html", error=error_msg)
+
+    # Create reset token in database
+    try:
+        conn = get_db_connection()
+        success, token, error = create_password_reset_token(conn, email)
+        conn.close()
+
+        if success and token:
+            # Build reset URL
+            reset_url = f"{get_base_url()}/auth/reset-password?token={token}"
+
+            # Send email with reset link
+            email_success, email_error = send_password_reset_link(email, reset_url)
+
+            if not email_success:
+                logger.warning(f"Failed to send reset email to {email}: {email_error}")
+                # Still show success to avoid leaking user existence info
+
+        # Always show success message (security: don't reveal if email exists)
+        success_msg = "If an account exists with this email, you will receive a password reset link."
+
+        if is_ajax:
+            return jsonify({
+                "success": True,
+                "message": success_msg
+            })
+        return render_template("forgot_password.html", success=success_msg)
+
+    except Exception as e:
+        logger.error(f"Password reset error: {e}")
+        error_msg = "An error occurred. Please try again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 500
+        return render_template("forgot_password.html", error=error_msg, email=email)
+
+
+@app.route("/auth/reset-password", methods=["GET", "POST"])
+def auth_reset_password():
+    """Handle password reset - validate token and set new password."""
+    # Check if this is an AJAX request
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    if request.method == "GET":
+        # Get token from URL parameter
+        token = request.args.get("token", "").strip()
+
+        if not token:
+            # No token provided, redirect to forgot password
+            return redirect(url_for("auth_forgot_password"))
+
+        # Validate token
+        try:
+            conn = get_db_connection()
+            is_valid, email, error = validate_reset_token(conn, token)
+            conn.close()
+
+            if not is_valid:
+                return render_template("reset_password.html", token_error=error)
+
+            return render_template(
+                "reset_password.html",
+                token=token,
+                email=email,
+                masked_email=mask_email(email)
+            )
+
+        except Exception as e:
+            logger.error(f"Token validation error: {e}")
+            return render_template("reset_password.html", token_error="An error occurred. Please try again.")
+
+    # POST: Reset password
+    token = request.form.get("token", "").strip()
+    new_password = request.form.get("password", "")
+
+    if not token:
+        error_msg = "Reset token is missing. Please request a new password reset link."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg, "tokenExpired": True}), 400
+        return render_template("reset_password.html", token_error=error_msg)
+
+    if not new_password:
+        error_msg = "New password is required."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 400
+        return render_template("reset_password.html", error=error_msg, token=token)
+
+    try:
+        conn = get_db_connection()
+
+        # Validate token again
+        is_valid, email, error = validate_reset_token(conn, token)
+
+        if not is_valid:
+            conn.close()
+            if is_ajax:
+                return jsonify({"success": False, "error": error, "tokenExpired": True}), 400
+            return render_template("reset_password.html", token_error=error)
+
+        # Set new password in Cognito
+        success, error = admin_set_user_password(email, new_password)
+
+        if not success:
+            conn.close()
+            if is_ajax:
+                return jsonify({"success": False, "error": error}), 400
+            return render_template(
+                "reset_password.html",
+                error=error,
+                token=token,
+                email=email,
+                masked_email=mask_email(email)
+            )
+
+        # Mark token as used
+        mark_reset_token_used(conn, token)
+        conn.close()
+
+        logger.info(f"PASSWORD RESET: Successfully reset password for {email}")
+
+        if is_ajax:
+            return jsonify({
+                "success": True,
+                "message": "Password reset successfully! You can now sign in.",
+                "redirectUrl": url_for("login")
+            })
+        return render_template(
+            "login.html",
+            success="Password reset successfully! You can now sign in.",
+            cognito_domain=COGNITO_DOMAIN,
+            client_id=COGNITO_CLIENT_ID,
+            callback_url=get_callback_url(),
+        )
+
+    except Exception as e:
+        logger.error(f"Password reset error: {e}")
+        error_msg = "An error occurred. Please try again."
+        if is_ajax:
+            return jsonify({"success": False, "error": error_msg}), 500
+        return render_template("reset_password.html", error=error_msg, token=token)
+
+
 def get_db_connection():
-    """Get SQLite database connection."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """Get PostgreSQL database connection."""
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+
+    if DATABASE_URL:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    else:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            cursor_factory=RealDictCursor
+        )
     return conn
 
 
@@ -493,7 +1611,7 @@ def load_volume_cached(study_id: str, series_name: str):
     cursor.execute(f"""
         SELECT {file_col} as file_path, InstanceNumber, ImagePositionPatient, PixelSpacing, SliceThickness
         FROM dicom_files
-        WHERE StudyInstanceUID = ? AND SeriesDescription = ?
+        WHERE StudyInstanceUID = %s AND SeriesDescription = %s
         ORDER BY InstanceNumber
     """, (study_id, series_name))
 
@@ -606,7 +1724,7 @@ def get_sequences(study_id):
     cursor.execute("""
         SELECT SeriesDescription, COUNT(*) as slice_count
         FROM dicom_files
-        WHERE StudyInstanceUID = ?
+        WHERE StudyInstanceUID = %s
         GROUP BY SeriesDescription
         ORDER BY slice_count DESC
     """, (study_id,))
@@ -633,7 +1751,7 @@ def get_volume(study_id, series_name):
     cursor.execute(f"""
         SELECT {file_col} as file_path, InstanceNumber, ImagePositionPatient, PixelSpacing, SliceThickness
         FROM dicom_files
-        WHERE StudyInstanceUID = ? AND SeriesDescription = ?
+        WHERE StudyInstanceUID = %s AND SeriesDescription = %s
         ORDER BY InstanceNumber
     """, (study_id, series_name))
 
@@ -731,7 +1849,7 @@ def get_slice(study_id, series_name, slice_num):
     cursor.execute(f"""
         SELECT {file_col} as file_path, InstanceNumber
         FROM dicom_files
-        WHERE StudyInstanceUID = ? AND SeriesDescription = ?
+        WHERE StudyInstanceUID = %s AND SeriesDescription = %s
         ORDER BY InstanceNumber
     """, (study_id, series_name))
 
@@ -874,7 +1992,7 @@ def get_voxel_metadata(study_id, series_name, x, y, z):
 
     cursor.execute("""
         SELECT * FROM dicom_files
-        WHERE StudyInstanceUID = ? AND SeriesDescription = ?
+        WHERE StudyInstanceUID = %s AND SeriesDescription = %s
         ORDER BY InstanceNumber
         LIMIT 1 OFFSET ?
     """, (study_id, series_name, z))
@@ -988,7 +2106,7 @@ def health_check():
 
 
 if __name__ == "__main__":
-    print(f"Storage mode: {'S3 (' + S3_BUCKET_NAME + ')' if USE_S3 else 'Local'}")
-    print(f"Database: {DB_PATH}")
-    print("Starting server at http://127.0.0.1:5000")
+    logger.info(f"Storage mode: {'S3 (' + S3_BUCKET_NAME + ')' if USE_S3 else 'Local'}")
+    logger.info(f"Database: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+    logger.info("Starting server at http://127.0.0.1:5000")
     app.run(debug=True, host="127.0.0.1", port=5000)

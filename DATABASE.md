@@ -11,9 +11,10 @@ OpenRadiomics uses **RDS PostgreSQL** as its primary database, storing DICOM met
 | Category | Tables | Description |
 |----------|--------|-------------|
 | **DICOM Hierarchy** | `patients`, `studies`, `series`, `instances` | Normalized DICOM metadata following the Patient → Study → Series → Instance hierarchy |
-| **Users & Auth** | `users` | Application users linked to Cognito |
+| **Users & Auth** | `users`, `pending_registrations`, `password_reset_tokens` | Application users, registration flow, password reset |
 | **Access Control** | `study_access`, `patient_access`, `share_links` | Row-level access control and sharing |
 | **Features** | `favorites`, `annotations`, `measurements`, `analysis_results` | User annotations, measurements, and AI outputs |
+| **Audit** | `audit_log` | HIPAA-compliant access logging |
 
 ---
 
@@ -346,6 +347,82 @@ CREATE INDEX idx_users_role ON users(role);
 
 ---
 
+### `pending_registrations`
+
+Tracks in-progress user registrations with verification codes and rate limiting.
+
+```sql
+CREATE TABLE pending_registrations (
+    id                      SERIAL PRIMARY KEY,
+    email                   VARCHAR(255),
+    phone                   VARCHAR(20),
+    first_name              VARCHAR(100),
+    last_name               VARCHAR(100),
+    verification_code       VARCHAR(10),
+    code_expires_at         TIMESTAMPTZ NOT NULL,
+    last_email_sent_at      TIMESTAMPTZ,
+    last_sms_sent_at        TIMESTAMPTZ,
+    email_send_count        INTEGER DEFAULT 0,
+    sms_send_count          INTEGER DEFAULT 0,
+    status                  VARCHAR(20) DEFAULT 'pending',  -- 'pending', 'verified', 'completed', 'expired'
+    form_data               JSONB,                          -- Additional registration form data
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(email),
+    UNIQUE(phone)
+);
+
+CREATE INDEX idx_pending_reg_email ON pending_registrations(email);
+CREATE INDEX idx_pending_reg_phone ON pending_registrations(phone);
+CREATE INDEX idx_pending_reg_status ON pending_registrations(status);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `email` | VARCHAR(255) | Email address (unique) |
+| `phone` | VARCHAR(20) | Phone number in E.164 format (unique) |
+| `verification_code` | VARCHAR(10) | 6-digit verification code |
+| `code_expires_at` | TIMESTAMPTZ | When the code expires (10 minutes) |
+| `email_send_count` | INTEGER | Rate limiting: times email sent |
+| `sms_send_count` | INTEGER | Rate limiting: times SMS sent |
+| `status` | VARCHAR(20) | pending → verified → completed |
+| `form_data` | JSONB | Additional form fields (address, consent, etc.) |
+
+---
+
+### `password_reset_tokens`
+
+Secure tokens for link-based password reset flow.
+
+```sql
+CREATE TABLE password_reset_tokens (
+    id              SERIAL PRIMARY KEY,
+    email           VARCHAR(255) NOT NULL,
+    token           VARCHAR(64) UNIQUE NOT NULL,    -- Secure random token (URL-safe)
+    expires_at      TIMESTAMPTZ NOT NULL,           -- 1 hour expiry
+    used_at         TIMESTAMPTZ,                    -- When token was used (NULL if unused)
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_password_reset_token ON password_reset_tokens(token);
+CREATE INDEX idx_password_reset_email ON password_reset_tokens(email);
+CREATE INDEX idx_password_reset_expires ON password_reset_tokens(expires_at);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `email` | VARCHAR(255) | User's email address |
+| `token` | VARCHAR(64) | Cryptographically secure random token |
+| `expires_at` | TIMESTAMPTZ | Token expiration (1 hour from creation) |
+| `used_at` | TIMESTAMPTZ | When token was used (prevents reuse) |
+
+**Flow:**
+1. User requests password reset → token created, email sent with link
+2. User clicks link (`/auth/reset-password?token=xxx`) → token validated
+3. User sets new password → token marked as used
+
+---
+
 ## Access Control Tables
 
 ### `study_access`
@@ -559,6 +636,44 @@ CREATE INDEX idx_analysis_status ON analysis_results(status);
 
 ---
 
+## Audit Tables
+
+### `audit_log`
+
+HIPAA-compliant logging of all system access for compliance and security.
+
+```sql
+CREATE TABLE audit_log (
+    id              BIGSERIAL PRIMARY KEY,
+    timestamp       TIMESTAMPTZ DEFAULT NOW(),
+    user_id         INTEGER REFERENCES users(id),
+    action          VARCHAR(100) NOT NULL,       -- 'login', 'logout', 'view_study', 'download', etc.
+    resource_type   VARCHAR(50),                 -- 'study', 'series', 'instance', 'user', etc.
+    resource_id     VARCHAR(255),                -- ID of the resource accessed
+    ip_address      INET,                        -- Client IP address
+    request_path    VARCHAR(500),                -- HTTP request path
+    response_status INTEGER                      -- HTTP response status code
+);
+
+CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp DESC);
+CREATE INDEX idx_audit_log_user ON audit_log(user_id);
+CREATE INDEX idx_audit_log_action ON audit_log(action);
+CREATE INDEX idx_audit_log_resource ON audit_log(resource_type, resource_id);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `timestamp` | TIMESTAMPTZ | When the action occurred |
+| `user_id` | INTEGER | User who performed the action (NULL for anonymous) |
+| `action` | VARCHAR(100) | Action type (login, logout, view_study, download, etc.) |
+| `resource_type` | VARCHAR(50) | Type of resource accessed |
+| `resource_id` | VARCHAR(255) | ID of the resource |
+| `ip_address` | INET | Client IP address |
+| `request_path` | VARCHAR(500) | HTTP request path |
+| `response_status` | INTEGER | HTTP response status code |
+
+---
+
 ## Migration from SQLite
 
 The current flat `dicom_files` table maps to the new normalized schema:
@@ -684,4 +799,4 @@ SELECT EXISTS(
 
 ---
 
-*Last Updated: 2025-01-31*
+*Last Updated: 2026-02-01*

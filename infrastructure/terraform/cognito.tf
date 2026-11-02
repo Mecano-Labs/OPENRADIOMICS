@@ -122,16 +122,17 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   supported_identity_providers         = ["COGNITO"]
 
-  # Callback URLs - using the known App Runner URL
-  # Note: After initial deployment, these are updated via Terraform
+  # Callback URLs - production and local development
   callback_urls = [
     "https://ezj2rdbghf.us-east-1.awsapprunner.com/auth/callback",
-    "http://localhost:5000/auth/callback"
+    "http://localhost:5000/auth/callback",
+    "http://127.0.0.1:5000/auth/callback"
   ]
 
   logout_urls = [
     "https://ezj2rdbghf.us-east-1.awsapprunner.com/login",
-    "http://localhost:5000/login"
+    "http://localhost:5000/login",
+    "http://127.0.0.1:5000/login"
   ]
 
   # Token validity - HIPAA compliant short sessions
@@ -154,7 +155,8 @@ resource "aws_cognito_user_pool_client" "web" {
   # Auth flows
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
-    "ALLOW_USER_SRP_AUTH"
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_USER_PASSWORD_AUTH"
   ]
 
   # Read/write attributes

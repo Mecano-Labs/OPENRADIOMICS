@@ -7,6 +7,13 @@ __pycache__/
 venv/
 env/
 .env
+.env.local
+
+# Secrets (NEVER commit)
+.secrets.md
+.secrets
+*.secret
+run_local.sh
 
 # Database (contains personal medical data)
 *.db
@@ -30,3 +37,4 @@ Thumbs.db
 
 # Logs
 *.log
+logs/

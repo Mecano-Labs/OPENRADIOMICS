@@ -167,6 +167,117 @@
         .footer a:hover {
             color: #4fc3f7;
         }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 6px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 14px;
+            background: #1a1a2e;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #eee;
+            font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+            box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.1);
+        }
+        .form-group input::placeholder {
+            color: #666;
+        }
+        .success-message {
+            background: rgba(40, 167, 69, 0.1);
+            border: 1px solid #28a745;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 20px;
+            color: #51cf66;
+            font-size: 14px;
+        }
+        .mfa-section {
+            display: none;
+            margin-top: 20px;
+        }
+        .mfa-section.active {
+            display: block;
+        }
+        .mfa-input-container {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin: 15px 0;
+        }
+        .mfa-input {
+            width: 45px;
+            height: 55px;
+            font-size: 22px;
+            text-align: center;
+            background: #1a1a2e;
+            border: 2px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            transition: border-color 0.2s;
+        }
+        .mfa-input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        .mfa-input.filled {
+            border-color: #4fc3f7;
+        }
+        .trust-device-option {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .trust-device-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .trust-device-label input[type="checkbox"] {
+            display: none;
+        }
+        .checkbox-custom {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #444;
+            border-radius: 4px;
+            background: #1a1a2e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .trust-device-label input[type="checkbox"]:checked + .checkbox-custom {
+            background: #4fc3f7;
+            border-color: #4fc3f7;
+        }
+        .trust-device-label input[type="checkbox"]:checked + .checkbox-custom::after {
+            content: '\2713';
+            color: #000;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .trust-device-text {
+            color: #ddd;
+            font-size: 14px;
+        }
+        .trust-device-hint {
+            color: #666;
+            font-size: 12px;
+            margin-top: 6px;
+        }
     </style>
 </head>
 <body>
@@ -180,18 +291,64 @@
             <h2>Welcome back</h2>
             <p class="subtitle">Sign in to access your studies</p>
 
-            {% if error %}
-            <div class="error-message">
-                {{ error }}
+            <div class="error-message" id="errorMessage" style="display: {% if error %}block{% else %}none{% endif %};">
+                {% if error %}{{ error }}{% endif %}
             </div>
-            {% endif %}
 
-            <a href="https://{{ cognito_domain }}/login?client_id={{ client_id }}&response_type=code&scope=email+openid+profile&redirect_uri={{ callback_url }}" class="sign-in-btn">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-                </svg>
-                Sign In with Email
-            </a>
+            <div class="success-message" id="successMessage" style="display: {% if success %}block{% else %}none{% endif %};">
+                {% if success %}{{ success }}{% endif %}
+            </div>
+
+            <form id="loginForm" method="POST" action="{{ url_for('auth_login') }}" novalidate>
+                <div id="credentialsSection">
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" required
+                               placeholder="Enter your email address"
+                               autocomplete="email">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required
+                               placeholder="Enter your password"
+                               autocomplete="current-password">
+                    </div>
+                </div>
+
+                <div class="mfa-section" id="mfaSection">
+                    <p style="text-align: center; color: #aaa; margin-bottom: 15px;">Enter the 6-digit code from your authenticator app</p>
+                    <input type="hidden" id="mfaCode" name="mfa_code">
+                    <input type="hidden" id="mfaSession" name="mfa_session">
+                    <div class="mfa-input-container">
+                        <input type="text" class="mfa-input" maxlength="1" data-index="0" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="mfa-input" maxlength="1" data-index="1" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="mfa-input" maxlength="1" data-index="2" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="mfa-input" maxlength="1" data-index="3" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="mfa-input" maxlength="1" data-index="4" inputmode="numeric" pattern="[0-9]">
+                        <input type="text" class="mfa-input" maxlength="1" data-index="5" inputmode="numeric" pattern="[0-9]">
+                    </div>
+                    <div class="trust-device-option">
+                        <label class="trust-device-label">
+                            <input type="checkbox" id="trustDevice" name="trust_device" value="on">
+                            <span class="checkbox-custom"></span>
+                            <span class="trust-device-text">Trust this device for 90 days</span>
+                        </label>
+                        <p class="trust-device-hint">Skip MFA on this browser for future logins</p>
+                    </div>
+                </div>
+
+                <button type="submit" class="sign-in-btn" id="submitBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                    </svg>
+                    <span id="submitBtnText">Sign In</span>
+                </button>
+            </form>
+
+            <div class="forgot-password-link" style="text-align: center; margin-top: 15px;">
+                <a href="{{ url_for('auth_forgot_password') }}" style="color: #888; text-decoration: none; font-size: 13px;">Forgot your password?</a>
+            </div>
 
             <div class="divider">
                 <span>or</span>
@@ -221,5 +378,192 @@
             <p>&copy; 2024 OpenRadiomics &bull; <a href="https://github.com/sawuapara/OPENRADIOMICS">GitHub</a></p>
         </div>
     </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitBtnText = document.getElementById('submitBtnText');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const credentialsSection = document.getElementById('credentialsSection');
+        const mfaSection = document.getElementById('mfaSection');
+        const mfaInputs = document.querySelectorAll('.mfa-input');
+        const mfaCodeInput = document.getElementById('mfaCode');
+        const mfaSessionInput = document.getElementById('mfaSession');
+
+        let isMfaMode = false;
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            successMessage.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            errorMessage.style.display = 'none';
+        }
+
+        function hideMessages() {
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+        }
+
+        function switchToMfaMode(session) {
+            isMfaMode = true;
+            mfaSessionInput.value = session;
+            credentialsSection.style.display = 'none';
+            mfaSection.classList.add('active');
+            submitBtnText.textContent = 'Verify Code';
+            mfaInputs[0].focus();
+        }
+
+        function resetForm() {
+            isMfaMode = false;
+            credentialsSection.style.display = 'block';
+            mfaSection.classList.remove('active');
+            submitBtnText.textContent = 'Sign In';
+            mfaInputs.forEach(input => {
+                input.value = '';
+                input.classList.remove('filled');
+            });
+            mfaCodeInput.value = '';
+            mfaSessionInput.value = '';
+        }
+
+        // Handle MFA code input
+        mfaInputs.forEach((input, index) => {
+            input.addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9]/g, '');
+
+                if (this.value.length === 1) {
+                    this.classList.add('filled');
+                    if (index < mfaInputs.length - 1) {
+                        mfaInputs[index + 1].focus();
+                    }
+                } else {
+                    this.classList.remove('filled');
+                }
+
+                updateMfaCode();
+            });
+
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && !this.value && index > 0) {
+                    mfaInputs[index - 1].focus();
+                }
+            });
+
+            input.addEventListener('paste', function(e) {
+                e.preventDefault();
+                const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+                const digits = pastedData.replace(/[^0-9]/g, '').slice(0, 6);
+
+                digits.split('').forEach((digit, i) => {
+                    if (mfaInputs[i]) {
+                        mfaInputs[i].value = digit;
+                        mfaInputs[i].classList.add('filled');
+                    }
+                });
+
+                const nextEmpty = Array.from(mfaInputs).findIndex(inp => !inp.value);
+                if (nextEmpty !== -1) {
+                    mfaInputs[nextEmpty].focus();
+                } else {
+                    mfaInputs[mfaInputs.length - 1].focus();
+                }
+
+                updateMfaCode();
+            });
+        });
+
+        function updateMfaCode() {
+            const code = Array.from(mfaInputs).map(i => i.value).join('');
+            mfaCodeInput.value = code;
+        }
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            hideMessages();
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            console.log('[LOGIN] Form submitted, isMfaMode:', isMfaMode);
+            console.log('[LOGIN] Email:', email);
+
+            if (!isMfaMode) {
+                if (!email) {
+                    showError('Please enter your email address.');
+                    return;
+                }
+                if (!password) {
+                    showError('Please enter your password.');
+                    return;
+                }
+            } else {
+                const mfaCode = mfaCodeInput.value;
+                console.log('[LOGIN] MFA code length:', mfaCode.length);
+                if (mfaCode.length !== 6) {
+                    showError('Please enter the complete 6-digit code.');
+                    return;
+                }
+            }
+
+            submitBtn.disabled = true;
+            submitBtnText.textContent = isMfaMode ? 'Verifying...' : 'Signing in...';
+
+            const formData = new FormData(form);
+            console.log('[LOGIN] Sending request to:', form.action);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                console.log('[LOGIN] Response status:', response.status);
+                console.log('[LOGIN] Response ok:', response.ok);
+                return response.json();
+            })
+            .then(data => {
+                console.log('[LOGIN] Response data:', JSON.stringify(data, null, 2));
+                if (data.success) {
+                    if (data.mfaRequired) {
+                        console.log('[LOGIN] MFA required, switching to MFA mode');
+                        switchToMfaMode(data.session);
+                        submitBtn.disabled = false;
+                    } else {
+                        console.log('[LOGIN] Success! Redirecting to:', data.redirectUrl || '/');
+                        showSuccess('Sign in successful! Redirecting...');
+                        window.location.href = data.redirectUrl || '/';
+                    }
+                } else {
+                    console.log('[LOGIN] Login failed:', data.error);
+                    showError(data.error || 'Sign in failed. Please try again.');
+                    submitBtn.disabled = false;
+                    submitBtnText.textContent = isMfaMode ? 'Verify Code' : 'Sign In';
+                    if (data.sessionExpired) {
+                        resetForm();
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('[LOGIN] Fetch error:', error);
+                showError('An error occurred. Please try again.');
+                submitBtn.disabled = false;
+                submitBtnText.textContent = isMfaMode ? 'Verify Code' : 'Sign In';
+            });
+        });
+
+        // Re-enable submit button if page is reloaded
+        window.addEventListener('pageshow', function() {
+            submitBtn.disabled = false;
+            submitBtnText.textContent = 'Sign In';
+        });
+    </script>
 </body>
 </html>

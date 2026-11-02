@@ -147,6 +147,7 @@ CREATE TABLE users (
     email           VARCHAR(255) UNIQUE,            -- Email (may be NULL if phone-only registration)
     display_name    VARCHAR(255),
     role            VARCHAR(50) DEFAULT 'viewer',   -- 'admin', 'clinician', 'researcher', 'viewer'
+    user_type       VARCHAR(20) DEFAULT NULL,       -- 'patient', 'provider', NULL (not yet selected)
 
     -- Profile fields (HIPAA compliance)
     first_name      VARCHAR(100),
@@ -175,6 +176,7 @@ CREATE INDEX idx_users_cognito ON users(cognito_sub);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_phone ON users(phone);
+CREATE INDEX idx_users_user_type ON users(user_type);
 
 -- ============================================================================
 -- ACCESS CONTROL TABLES
@@ -422,3 +424,78 @@ CREATE TABLE schema_version (
 INSERT INTO schema_version (version, description) VALUES (1, 'Initial schema - OpenRadiomics normalized DICOM database');
 INSERT INTO schema_version (version, description) VALUES (2, 'Add audit_log table for HIPAA compliance');
 INSERT INTO schema_version (version, description) VALUES (3, 'Add user profile fields for custom registration (name, phone, address, consent tracking)');
+INSERT INTO schema_version (version, description) VALUES (4, 'Add pending_registrations table for verification tracking and rate limiting');
+INSERT INTO schema_version (version, description) VALUES (5, 'Add user_type column for patient/provider classification');
+INSERT INTO schema_version (version, description) VALUES (6, 'Add password_reset_tokens table for link-based password reset');
+INSERT INTO schema_version (version, description) VALUES (7, 'Add trusted_devices table for MFA device trust feature');
+
+-- ============================================================================
+-- PENDING REGISTRATIONS TABLE (for verification code tracking & rate limiting)
+-- ============================================================================
+
+CREATE TABLE pending_registrations (
+    id                      SERIAL PRIMARY KEY,
+    email                   VARCHAR(255),
+    phone                   VARCHAR(20),
+    first_name              VARCHAR(100),
+    last_name               VARCHAR(100),
+    verification_code       VARCHAR(10),
+    code_expires_at         TIMESTAMPTZ NOT NULL,
+    last_email_sent_at      TIMESTAMPTZ,
+    last_sms_sent_at        TIMESTAMPTZ,
+    email_send_count        INTEGER DEFAULT 0,
+    sms_send_count          INTEGER DEFAULT 0,
+    status                  VARCHAR(20) DEFAULT 'pending',  -- 'pending', 'verified', 'completed', 'expired'
+    form_data               JSONB,                          -- Store additional form data
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(email),
+    UNIQUE(phone)
+);
+
+CREATE INDEX idx_pending_reg_email ON pending_registrations(email);
+CREATE INDEX idx_pending_reg_phone ON pending_registrations(phone);
+CREATE INDEX idx_pending_reg_status ON pending_registrations(status);
+CREATE INDEX idx_pending_reg_expires ON pending_registrations(code_expires_at);
+
+CREATE TRIGGER update_pending_registrations_updated_at
+    BEFORE UPDATE ON pending_registrations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- PASSWORD RESET TOKENS TABLE (for link-based password reset)
+-- ============================================================================
+
+CREATE TABLE password_reset_tokens (
+    id              SERIAL PRIMARY KEY,
+    email           VARCHAR(255) NOT NULL,
+    token           VARCHAR(64) UNIQUE NOT NULL,    -- Secure random token
+    expires_at      TIMESTAMPTZ NOT NULL,           -- 1 hour expiry
+    used_at         TIMESTAMPTZ,                    -- When token was used (NULL if unused)
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_password_reset_token ON password_reset_tokens(token);
+CREATE INDEX idx_password_reset_email ON password_reset_tokens(email);
+CREATE INDEX idx_password_reset_expires ON password_reset_tokens(expires_at);
+
+-- ============================================================================
+-- TRUSTED DEVICES TABLE (for MFA device trust feature)
+-- ============================================================================
+
+CREATE TABLE trusted_devices (
+    id              SERIAL PRIMARY KEY,
+    user_email      VARCHAR(255) NOT NULL,
+    device_token    VARCHAR(64) UNIQUE NOT NULL,
+    device_name     VARCHAR(255),
+    user_agent      TEXT,
+    ip_address      INET,
+    trusted_at      TIMESTAMPTZ DEFAULT NOW(),
+    last_used_at    TIMESTAMPTZ DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    is_active       BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX idx_trusted_devices_token ON trusted_devices(device_token);
+CREATE INDEX idx_trusted_devices_email ON trusted_devices(user_email);
+CREATE INDEX idx_trusted_devices_expires ON trusted_devices(expires_at) WHERE is_active = TRUE;

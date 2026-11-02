@@ -1,37 +1,54 @@
-# OpenRadiomics - Claude Development Notes
+# RadMetrics (OpenRadiomics) - Claude Development Notes
 
-## Deployment Environment
+**Target Domain**: radmetrics.ai
 
-**IMPORTANT: This application is deployed to AWS App Runner, NOT running locally.**
+## Development Workflow
 
-- **Live URL**: https://ezj2rdbghf.us-east-1.awsapprunner.com
-- **AWS Region**: us-east-1
-- **Infrastructure**: Managed via Terraform in `infrastructure/terraform/`
+**We develop LOCALLY but against the CLOUD database (RDS), then deploy to App Runner daily.**
 
-## Deployment Process
+### Local Development
+```bash
+./run_local.sh
+```
+- Runs Flask on http://127.0.0.1:5000
+- Connects to cloud RDS PostgreSQL database
+- Uses cloud S3 bucket for DICOM storage
+- Credentials stored in `.secrets.md` (gitignored)
 
-### To deploy code changes:
-1. Commit changes to the repository
-2. Trigger CodeBuild to build and push Docker image:
-   ```bash
-   aws codebuild start-build --project-name openradiomics-build --region us-east-1
-   ```
-3. App Runner auto-deploys when new image is pushed to ECR
+### Deploy to Cloud (Daily)
+```bash
+aws codebuild start-build --project-name openradiomics-build --region us-east-1
+```
+App Runner auto-deploys when new image is pushed to ECR.
 
-### To deploy infrastructure changes:
-1. Install Terraform (if not available)
-2. Run from `infrastructure/terraform/`:
-   ```bash
-   terraform init
-   terraform plan
-   terraform apply
-   ```
+## Cloud Resources
+
+| Resource | Value |
+|----------|-------|
+| **Target Domain** | radmetrics.ai (not yet configured) |
+| **Live URL** | https://ezj2rdbghf.us-east-1.awsapprunner.com |
+| **Region** | us-east-1 |
+| **RDS Host** | openradiomics-dev-db.cwznsagquzwy.us-east-1.rds.amazonaws.com |
+| **S3 Bucket** | openradiomics-dev-dicom-445305334312 |
+| **ECR Repo** | 445305334312.dkr.ecr.us-east-1.amazonaws.com/openradiomics-dev |
+| **Cognito User Pool ID** | us-east-1_SImbjXiLt |
+| **Cognito Client ID** | 4pf34gh2u5sbd6l8hm54m0na9b |
+| **Cognito Domain** | openradiomics-dev-445305334312.auth.us-east-1.amazoncognito.com |
+
+## Credentials
+
+**See `.secrets.md` for database password and connection strings.**
+
+This file is gitignored and contains:
+- RDS password
+- Full connection strings
+- Environment variable exports
 
 ## Architecture
 
 - **Frontend**: Three.js-based MRI viewer (templates/viewer.html)
 - **Backend**: Flask API (viewer_app.py)
-- **Database**: PostgreSQL on RDS
+- **Database**: PostgreSQL 15 on RDS (cloud, shared between local dev and production)
 - **Storage**: S3 for DICOM files
 - **Auth**: AWS Cognito (HIPAA-compliant with mandatory MFA)
 - **Hosting**: AWS App Runner (auto-scaling container service)
@@ -44,33 +61,82 @@
 | `auth.py` | Authentication module (Cognito JWT validation) |
 | `templates/viewer.html` | Main viewer UI |
 | `templates/login.html` | Login page |
+| `templates/register.html` | 3-step registration flow |
+| `run_local.sh` | Local development script (gitignored) |
+| `.secrets.md` | Credentials documentation (gitignored) |
 | `infrastructure/terraform/*.tf` | AWS infrastructure |
 
-## Authentication (HIPAA Compliant)
+## Registration Flow (3 Steps)
 
-- Cognito User Pool with mandatory MFA
-- 15-minute access tokens, 8-hour refresh tokens
-- Session timeout after 15 minutes of inactivity
-- All access logged to `audit_log` table
+1. **Step 1**: Name, Email OR Phone, Consent → "Continue"
+2. **Step 2**: Enter 6-digit verification code → "Verify"
+3. **Step 3**: Set password → "Complete Registration"
 
-## Environment Variables (App Runner)
+Password is collected AFTER email verification, not before.
 
+## Database
+
+Using PostgreSQL on RDS. Schema in `infrastructure/terraform/schema.sql`.
+
+**Tables**: patients, studies, series, instances, users, audit_log, annotations, measurements, etc.
+
+To apply schema changes:
+```python
+import psycopg2
+conn = psycopg2.connect(...)  # see .secrets.md
+cur = conn.cursor()
+cur.execute(open('infrastructure/terraform/schema.sql').read())
+conn.commit()
+```
+
+## Environment Variables
+
+### Local Development (set in run_local.sh)
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+- `S3_BUCKET_NAME`
+- `AWS_REGION`
+
+### Production (App Runner)
+- `DATABASE_URL` - Full PostgreSQL connection string
 - `COGNITO_USER_POOL_ID` - Cognito User Pool ID
 - `COGNITO_CLIENT_ID` - Cognito App Client ID
 - `COGNITO_DOMAIN` - Cognito hosted UI domain
 - `SECRET_KEY` - Flask session secret
 - `S3_BUCKET_NAME` - DICOM storage bucket
-- `AWS_REGION` - AWS region (us-east-1)
 
-## Testing Changes
+## Authentication (HIPAA Compliant)
 
-Always test against the live URL after deployment:
+- Cognito User Pool with mandatory MFA (NOT YET DEPLOYED)
+- 15-minute access tokens, 8-hour refresh tokens
+- Session timeout after 15 minutes of inactivity
+- All access logged to `audit_log` table
+
+## Infrastructure Changes
+
+From `infrastructure/terraform/`:
 ```bash
-curl https://ezj2rdbghf.us-east-1.awsapprunner.com/api/health
+terraform init
+terraform plan
+terraform apply
 ```
 
-## DO NOT
+Remember to set `TF_VAR_db_password` before applying.
 
-- Run the app locally for testing (use the deployed version)
-- Make changes without deploying to see results
-- Forget that auth requires Cognito infrastructure to be deployed first
+## Quick Commands
+
+```bash
+# Start local dev server
+./run_local.sh
+
+# Deploy to cloud
+aws codebuild start-build --project-name openradiomics-build --region us-east-1
+
+# Check cloud health
+curl https://ezj2rdbghf.us-east-1.awsapprunner.com/api/health
+
+# Check local health
+curl http://127.0.0.1:5000/api/health
+
+# Stop local server
+pkill -f "python.*viewer_app"
+```
